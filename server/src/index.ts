@@ -10,6 +10,8 @@ import { chaptersRoute } from './routes/chapters.js'
 import { loreRoute } from './routes/lore.js'
 import { suggestRoute } from './routes/suggest.js'
 import { settingsRoute } from './routes/settings.js'
+import { syncRoute } from './routes/sync.js'
+import { startAutoSync } from './jobs/autoSync.js'
 
 const app = new Hono()
 
@@ -27,7 +29,10 @@ api.route('/', chaptersRoute)
 api.route('/', loreRoute)
 api.route('/', suggestRoute)
 api.route('/', settingsRoute)
+api.route('/', syncRoute)
 app.route('/api', api)
+
+startAutoSync()
 
 // 生产模式：托管前端构建产物
 const webDist = path.join(REPO_ROOT, 'web', 'dist')

@@ -83,6 +83,57 @@ export const apiDeleteLore = (id: string) => api<{ ok: boolean }>(`/api/lore/${i
 export const apiSettings = () => api<SettingsInfo>('/api/settings')
 export const apiJobs = () => api<JobInfo[]>('/api/jobs')
 
+// ---------- 云同步 ----------
+
+export type SyncProviderType = 'local' | 's3' | 'webdav' | 'gist'
+
+export interface SyncProviderForm {
+  type: SyncProviderType
+  dir?: string
+  endpoint?: string
+  region?: string
+  bucket?: string
+  key?: string
+  accessKeyId?: string
+  secretAccessKey?: string
+  url?: string
+  username?: string
+  password?: string
+  token?: string
+  gistId?: string
+}
+
+export interface SyncConfigResponse {
+  provider: SyncProviderForm | null
+  autoSync: boolean
+  autoSyncMinutes: number
+  lastPushAt: number | null
+  lastPullAt: number | null
+  local: { projects: number; chapters: number; lore: number }
+}
+
+export interface SyncRemoteInfo {
+  exists: boolean
+  savedAt?: number
+  bytes?: number
+  chapters?: number
+  projects?: { title: string; chapters: number }[]
+}
+
+export const apiSyncConfig = () => api<SyncConfigResponse>('/api/sync/config')
+export const apiSyncSave = (body: { provider?: SyncProviderForm | null; autoSync?: boolean; autoSyncMinutes?: number }) =>
+  api<SyncConfigResponse>('/api/sync/config', { method: 'PUT', body: JSON.stringify(body) })
+export const apiSyncTest = (body: { provider?: SyncProviderForm | null }) =>
+  api<{ ok: boolean; message: string }>('/api/sync/test', { method: 'POST', body: JSON.stringify(body) })
+export const apiSyncPush = () =>
+  api<{ ok: boolean; savedAt: number; bytes: number; projects: number; lastPushAt: number | null }>('/api/sync/push', { method: 'POST' })
+export const apiSyncRemote = () => api<SyncRemoteInfo>('/api/sync/remote')
+export const apiSyncPull = (mode: 'merge' | 'replace') =>
+  api<{ ok: boolean; mode: string; savedAt: number; counts: { projects: number; chapters: number; lore: number }; lastPullAt: number | null }>(
+    '/api/sync/pull',
+    { method: 'POST', body: JSON.stringify({ mode }) },
+  )
+
 export interface SuggestFeedback {
   projectId: string
   chapterId: string

@@ -73,9 +73,18 @@ function ProjectListPage() {
   const openProject = useStore((s) => s.openProject)
   const deleteProject = useStore((s) => s.deleteProject)
   const [title, setTitle] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
 
   return (
-    <div className="mx-auto flex h-full max-w-[640px] flex-col justify-center px-6">
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 px-4 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+        <span className="font-semibold">WriterAI</span>
+        <span className="flex-1" />
+        <button className="btn" onClick={() => setShowSettings(true)} title="模型、提词与云同步设置">
+          ⚙ 设置
+        </button>
+      </div>
+    <div className="mx-auto flex min-h-0 flex-1 w-full max-w-[640px] flex-col justify-center px-6">
       <h1 className="mb-1 text-[28px] font-bold">WriterAI 小说提词器</h1>
       <p className="muted mb-6 text-[13px]">
         停顿片刻，AI 结合设定与前情，在光标处给出灰色提示。Tab 接受，Esc 忽略。
@@ -122,8 +131,10 @@ function ProjectListPage() {
             </button>
           </div>
         ))}
-        {projects.length === 0 && <div className="muted text-center text-[13px]">还没有项目，先创建一个吧</div>}
+        {projects.length === 0 && <div className="muted text-center text-[13px]">还没有项目，先创建一个吧（也可在设置里从云端恢复）</div>}
       </div>
+    </div>
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
     </div>
   )
 }

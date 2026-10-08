@@ -306,3 +306,56 @@ export function deleteLore(id: string): void {
 export function logSuggestion(projectId: string, chapterId: string, outcome: 'accepted' | 'partial' | 'dismissed', latencyMs?: number): void {
   stmt.insertSuggestionLog.run(randomUUID(), projectId, chapterId, outcome, latencyMs ?? null, now())
 }
+
+// ---------- 云同步：快照导入导出 ----------
+
+const upsertProjectStmt = db.prepare(`
+  INSERT INTO projects (id, title, synopsis, global_summary, style_note, created_at, updated_at)
+  VALUES (@id, @title, @synopsis, @global_summary, @style_note, @created_at, @updated_at)
+  ON CONFLICT(id) DO UPDATE SET
+    title = excluded.title, synopsis = excluded.synopsis,
+    global_summary = excluded.global_summary, style_note = excluded.style_note,
+    created_at = excluded.created_at, updated_at = excluded.updated_at
+`)
+
+const upsertChapterStmt = db.prepare(`
+  INSERT INTO chapters (id, project_id, sort_order, title, content, summary, summary_locked, summarized_len, created_at, updated_at)
+  VALUES (@id, @project_id, @sort_order, @title, @content, @summary, @summary_locked, @summarized_len, @created_at, @updated_at)
+  ON CONFLICT(id) DO UPDATE SET
+    project_id = excluded.project_id, sort_order = excluded.sort_order, title = excluded.title,
+    content = excluded.content, summary = excluded.summary, summary_locked = excluded.summary_locked,
+    summarized_len = excluded.summarized_len, created_at = excluded.created_at, updated_at = excluded.updated_at
+`)
+
+const upsertLoreStmt = db.prepare(`
+  INSERT INTO lore_entries (id, project_id, type, name, aliases, content, current_state, always_on, priority, enabled, updated_at)
+  VALUES (@id, @project_id, @type, @name, @aliases, @content, @current_state, @always_on, @priority, @enabled, @updated_at)
+  ON CONFLICT(id) DO UPDATE SET
+    project_id = excluded.project_id, type = excluded.type, name = excluded.name, aliases = excluded.aliases,
+    content = excluded.content, current_state = excluded.current_state, always_on = excluded.always_on,
+    priority = excluded.priority, enabled = excluded.enabled, updated_at = excluded.updated_at
+`)
+
+export function upsertProjectRow(row: ProjectRow): void {
+  upsertProjectStmt.run(row)
+}
+
+export function upsertChapterRow(row: ChapterRow): void {
+  upsertChapterStmt.run(row)
+}
+
+export function upsertLoreRow(row: LoreRow): void {
+  upsertLoreStmt.run(row)
+}
+
+/** 清空全部项目（章节与设定随外键级联删除） */
+export function deleteAllProjects(): void {
+  db.prepare('DELETE FROM projects').run()
+}
+
+export function countAll(): { projects: number; chapters: number; lore: number } {
+  const p = db.prepare('SELECT COUNT(*) AS n FROM projects').get() as { n: number }
+  const c = db.prepare('SELECT COUNT(*) AS n FROM chapters').get() as { n: number }
+  const l = db.prepare('SELECT COUNT(*) AS n FROM lore_entries').get() as { n: number }
+  return { projects: p.n, chapters: c.n, lore: l.n }
+}

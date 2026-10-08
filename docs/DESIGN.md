@@ -466,7 +466,21 @@ git push -u origin main
 
 ---
 
-## 13. 后续可扩展（不在 MVP 内）
+## 13. 云端存储（已实现）
+
+- **快照式同步**：本地全部数据导出为单个 JSON 快照（`writerai-sync.json`），推送到云端；恢复时整体导入。比逐条同步简单可靠，且适用于任何能存文件的存储
+- **适配器**：`server/src/sync/providers.ts` 定义统一接口 `put / get / test`
+  - `local`：本地文件夹或网盘同步目录
+  - `s3`：aws4fetch 签名，兼容 S3 / R2 / OSS / COS / MinIO
+  - `webdav`：Basic 鉴权 + PUT/GET
+  - `gist`：GitHub API，首次上传自动创建 Gist 并回写 id
+- **配置**：`data/sync-config.json`（chmod 600）。密钥只存服务端，返回前端前打码（`••••••`），前端回填打码值时保留原密钥
+- **安全**：云端数据属于不可信输入，导入前用 Zod 严格校验（版本、字段、枚举、长度）
+- **路由**：`GET/PUT /api/sync/config`、`POST /api/sync/test`、`POST /api/sync/push`、`GET /api/sync/remote`、`POST /api/sync/pull?mode=merge|replace`
+- **自动备份**：`server/src/jobs/autoSync.ts`，正文保存时 `markDirty()`，每分钟检查，满足间隔且脏时推送
+- **注意**：项目列表页也必须能打开设置，否则数据全部丢失后无法进入界面执行恢复
+
+## 14. 后续可扩展（不在 MVP 内）
 - 向量检索：设定条目、历史段落 embedding，补充关键词触发漏掉的内容。
 - 多候选：一次生成 3 个候选，`Alt+]` 切换。
 - 大纲模式：章节大纲作为上下文块，续写朝大纲目标推进。

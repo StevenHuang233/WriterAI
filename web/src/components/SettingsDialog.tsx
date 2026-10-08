@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { SUGGEST_LENGTH_LABELS, type SuggestLength } from '../types'
+import SyncPanel from './SyncPanel'
 
 const LENGTH_KEYS: SuggestLength[] = ['short', 'medium', 'long']
 
@@ -12,6 +13,7 @@ export default function SettingsDialog({ onClose }: Props) {
   const prefs = useStore((s) => s.prefs)
   const setPrefs = useStore((s) => s.setPrefs)
   const settingsInfo = useStore((s) => s.settingsInfo)
+  const [tab, setTab] = useState<'general' | 'sync'>('general')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,6 +40,19 @@ export default function SettingsDialog({ onClose }: Props) {
           </button>
         </div>
 
+        <div className="mb-4 flex gap-1">
+          <span className={`tab ${tab === 'general' ? 'active' : ''}`} onClick={() => setTab('general')}>
+            通用
+          </span>
+          <span className={`tab ${tab === 'sync' ? 'active' : ''}`} onClick={() => setTab('sync')}>
+            云同步
+          </span>
+        </div>
+
+        {tab === 'sync' ? (
+          <SyncPanel />
+        ) : (
+          <>
         <div className="mb-4">
           <div className="mb-1 flex items-center justify-between text-[13px]">
             <span>提词等待时间</span>
@@ -106,6 +121,8 @@ export default function SettingsDialog({ onClose }: Props) {
         <div className="mt-4 text-[12px] muted">
           快捷键：Tab 接受全部 · Cmd/Ctrl+→ 接受到下一个标点 · Esc 忽略 · Cmd/Ctrl+J 手动提词 · Cmd/Ctrl+Shift+J 续写一段
         </div>
+          </>
+        )}
       </div>
     </div>
   )

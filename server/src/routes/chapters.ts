@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { createChapter, deleteChapter, getChapter, getProject, updateChapter } from '../db/repo.js'
 import { enqueueSummarize } from '../jobs/summarizer.js'
+import { markDirty } from '../jobs/autoSync.js'
 import { badRequest, notFound, parseBody } from './util.js'
 
 export const chaptersRoute = new Hono()
@@ -55,6 +56,7 @@ chaptersRoute.patch('/chapters/:id', async (c) => {
   }
 
   updateChapter(id, patch)
+  if (body.content !== undefined) markDirty()
 
   // 自动摘要检查（保存正文 60s 后且期间没有再次排队时执行）
   const content = body.content ?? ch.content
