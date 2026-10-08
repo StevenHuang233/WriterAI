@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { env } from '../env.js'
 import { chatOnce, extractJson } from '../llm/client.js'
 import { characterStatePrompt, chapterSummaryPrompt, mergeGlobalSummaryPrompt, rebuildGlobalSummaryPrompt } from '../llm/prompts.js'
 import { matchLore } from '../context/lore-match.js'
@@ -79,7 +80,11 @@ async function runJob(chapterId: string): Promise<void> {
     let summary = ch.summary
     let summaryUpdated = false
     if (!ch.summary_locked && ch.content.trim().length >= 100) {
-      const s = await chatOnce('strong', chapterSummaryPrompt(ch.content), { maxTokens: 800, temperature: 0.3 })
+      const s = await chatOnce('strong', chapterSummaryPrompt(ch.content), {
+        maxTokens: 2000,
+        temperature: 0.3,
+        effort: env.strong.effort || undefined,
+      })
       if (s) {
         summary = s
         summaryUpdated = true
@@ -97,7 +102,7 @@ async function runJob(chapterId: string): Promise<void> {
       const merged = await chatOnce(
         'strong',
         mergeGlobalSummaryPrompt(project.global_summary, ch.title, summary),
-        { maxTokens: 1200, temperature: 0.3 },
+        { maxTokens: 2500, temperature: 0.3, effort: env.strong.effort || undefined },
       )
       if (merged) updateProject(project.id, { global_summary: merged })
     }
@@ -127,7 +132,7 @@ async function runJob(chapterId: string): Promise<void> {
             content: c.content,
             currentState: c.current_state,
           }))),
-          { maxTokens: 1000, temperature: 0.2 },
+          { maxTokens: 2000, temperature: 0.2, effort: env.strong.effort || undefined },
         )
         const parsed = StateUpdateSchema.safeParse(extractJson(raw))
         if (parsed.success) {
@@ -178,7 +183,7 @@ export async function rebuildGlobalSummary(projectId: string): Promise<string> {
   const chapters = listChaptersFull(projectId)
   const parts = chapters.filter((c) => c.summary.trim()).map((c) => `第${c.sort_order}章《${c.title}》：${c.summary.trim()}`)
   if (parts.length === 0) throw new Error('还没有任何章节摘要，请先生成摘要')
-  const text = await chatOnce('strong', rebuildGlobalSummaryPrompt(parts), { maxTokens: 1200, temperature: 0.3 })
+  const text = await chatOnce('strong', rebuildGlobalSummaryPrompt(parts), { maxTokens: 2500, temperature: 0.3, effort: env.strong.effort || undefined })
   if (!text) throw new Error('模型没有返回内容')
   updateProject(projectId, { global_summary: text })
   return text

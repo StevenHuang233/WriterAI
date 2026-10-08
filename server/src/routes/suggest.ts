@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 import { env, llmReady } from '../env.js'
-import { streamChat } from '../llm/client.js'
+import { createChatStream } from '../llm/client.js'
 import { buildSuggestMessages } from '../context/builder.js'
 import { getChapter, getProject, listChapterMetas, listLore, logSuggestion } from '../db/repo.js'
 import { safeParseAliases } from './lore.js'
@@ -67,15 +67,22 @@ suggestRoute.post('/suggest', async (c) => {
     mode: body.mode,
   })
 
+  // inline 给 600 tokens：推理模型的思考 token 会占用输出预算
   const chatOpts =
     body.mode === 'inline'
-      ? { temperature: 0.8, maxTokens: 120, stop: ['\n\n'] as string[] }
-      : { temperature: 0.8, maxTokens: 1000 }
-
-  const ac = new AbortController()
+      ? { temperature: 0.8, maxTokens: 600, stop: ['\n\n'] as string[] }
+      : { temperature: 0.8, maxTokens: 2000 }
 
   return streamSSE(c, async (stream) => {
-    stream.onAbort(() => ac.abort())
+    // 注意：不能把 AbortSignal 传给 openai SDK（在 streamSSE 回调内会导致流静默为空），
+    // 改用 SDK 流对象自带的 controller 实现客户端断开时中断上游。
+    let upstream: { controller: AbortController } | null = null
+    let aborted = false
+    stream.onAbort(() => {
+      aborted = true
+      upstream?.controller.abort()
+    })
+
     await stream.writeSSE({
       event: 'meta',
       data: JSON.stringify({
@@ -84,15 +91,29 @@ suggestRoute.post('/suggest', async (c) => {
         model: env[kind].model,
       }),
     })
+
     let full = ''
     try {
-      for await (const delta of streamChat(kind, built.messages, { ...chatOpts, signal: ac.signal })) {
-        full += delta
-        await stream.writeSSE({ event: 'delta', data: JSON.stringify({ text: delta }) })
+      // 推理模型的思考长度有波动，偶尔会把 token 预算耗尽导致正文为空：
+      // 空结果时用更大的预算重试一次（此时还没有 delta 写出，重试是干净的）
+      for (let attempt = 0; attempt < 2 && !full.trim(); attempt++) {
+        const opts = attempt === 0 ? chatOpts : { ...chatOpts, maxTokens: Math.max(chatOpts.maxTokens, 1500) }
+        const s = await createChatStream(kind, built.messages, {
+          ...opts,
+          effort: env[kind].effort || undefined,
+        })
+        upstream = s
+        for await (const chunk of s) {
+          const delta = chunk.choices?.[0]?.delta?.content
+          if (delta) {
+            full += delta
+            await stream.writeSSE({ event: 'delta', data: JSON.stringify({ text: delta }) })
+          }
+        }
       }
       await stream.writeSSE({ event: 'done', data: '{}' })
     } catch (e) {
-      if (ac.signal.aborted) return
+      if (aborted) return
       const message = e instanceof Error ? e.message : String(e)
       try {
         await stream.writeSSE({ event: 'error', data: JSON.stringify({ message }) })

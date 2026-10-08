@@ -31,6 +31,13 @@ export interface LLMEnvConfig {
   baseURL: string
   apiKey: string
   model: string
+  /** 推理模型的思考力度（low/high/max），非推理模型留空 */
+  effort: 'low' | 'high' | 'max' | ''
+}
+
+function readEffort(prefix: 'FAST' | 'STRONG'): 'low' | 'high' | 'max' | '' {
+  const v = (process.env[`${prefix}_EFFORT`] ?? '').trim().toLowerCase()
+  return v === 'low' || v === 'high' || v === 'max' ? v : ''
 }
 
 function readLLM(prefix: 'FAST' | 'STRONG'): LLMEnvConfig {
@@ -38,6 +45,7 @@ function readLLM(prefix: 'FAST' | 'STRONG'): LLMEnvConfig {
     baseURL: (process.env[`${prefix}_BASE_URL`] ?? '').trim(),
     apiKey: (process.env[`${prefix}_API_KEY`] ?? '').trim(),
     model: (process.env[`${prefix}_MODEL`] ?? '').trim(),
+    effort: readEffort(prefix),
   }
 }
 

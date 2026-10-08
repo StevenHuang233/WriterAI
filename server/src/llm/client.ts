@@ -10,6 +10,8 @@ export interface ChatOptions {
   temperature?: number
   maxTokens?: number
   stop?: string[]
+  /** 推理模型思考力度；仅在配置了 *_EFFORT 时传递 */
+  effort?: 'low' | 'high' | 'max'
   signal?: AbortSignal
 }
 
@@ -36,16 +38,19 @@ function params(kind: LLMKind, messages: ChatMessage[], opts: ChatOptions) {
     temperature: opts.temperature ?? 0.8,
     ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
     ...(opts.stop && opts.stop.length > 0 ? { stop: opts.stop } : {}),
+    ...(opts.effort ? { effort: opts.effort } : {}),
   }
+}
+
+/** 创建流式对话（返回 SDK Stream，可用 stream.controller.abort() 中断） */
+export async function createChatStream(kind: LLMKind, messages: ChatMessage[], opts: ChatOptions = {}) {
+  const client = getClient(kind)
+  return client.chat.completions.create({ ...params(kind, messages, opts), stream: true })
 }
 
 /** 流式对话，逐段 yield 增量文本 */
 export async function* streamChat(kind: LLMKind, messages: ChatMessage[], opts: ChatOptions = {}): AsyncGenerator<string> {
-  const client = getClient(kind)
-  const stream = await client.chat.completions.create(
-    { ...params(kind, messages, opts), stream: true },
-    ...(opts.signal ? [{ signal: opts.signal }] : []),
-  )
+  const stream = await createChatStream(kind, messages, opts)
   for await (const chunk of stream) {
     const delta = chunk.choices?.[0]?.delta?.content
     if (delta) yield delta
