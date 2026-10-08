@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import { env } from '../env.js'
 import { chatOnce, extractJson } from '../llm/client.js'
-import { characterStatePrompt, chapterSummaryPrompt, mergeGlobalSummaryPrompt, rebuildGlobalSummaryPrompt } from '../llm/prompts.js'
+import {
+  characterStatePrompt, chapterSummaryPrompt, incrementalChapterSummaryPrompt,
+  mergeGlobalSummaryPrompt, rebuildGlobalSummaryPrompt,
+} from '../llm/prompts.js'
 import { matchLore } from '../context/lore-match.js'
 import {
   getChapter, getProject, listChaptersFull, listLore, updateChapter, updateLore, updateProject,
@@ -80,7 +83,16 @@ async function runJob(chapterId: string): Promise<void> {
     let summary = ch.summary
     let summaryUpdated = false
     if (!ch.summary_locked && ch.content.trim().length >= 100) {
-      const s = await chatOnce('strong', chapterSummaryPrompt(ch.content), {
+      // 已有摘要且只是续写：只把新增部分发给模型，省 token 也更快
+      const newPart =
+        ch.summarized_len > 0 && ch.summarized_len < ch.content.length
+          ? ch.content.slice(ch.summarized_len)
+          : ''
+      const canIncremental = ch.summary.trim().length > 0 && newPart.trim().length > 0
+      const messages = canIncremental
+        ? incrementalChapterSummaryPrompt(ch.summary, newPart)
+        : chapterSummaryPrompt(ch.content)
+      const s = await chatOnce('strong', messages, {
         maxTokens: 2000,
         temperature: 0.3,
         effort: env.strong.effort || undefined,

@@ -43,6 +43,30 @@ ${text}`,
   ]
 }
 
+/**
+ * 增量摘要：只把“上次摘要之后新增的正文”发给模型，与已有摘要合并。
+ * 长章节可显著降低 token 消耗与耗时。
+ */
+export function incrementalChapterSummaryPrompt(oldSummary: string, newText: string): ChatMessage[] {
+  return [
+    {
+      role: 'user',
+      content: `这是一章小说的已有摘要，以及这段摘要之后新写出的正文。请把新内容合并进摘要。
+要求：
+1. 150～300 字，按时间顺序概括关键事件。
+2. 必须保留：人物的重要决定、关系变化、受伤/获得/失去的物品、新出现的伏笔与未解决的悬念。
+3. 已有摘要中与新内容矛盾的地方以新内容为准；不写评价，不写文学性描写。
+只输出更新后的摘要正文。
+
+【已有摘要】
+${oldSummary}
+
+【新增正文】
+${newText}`,
+    },
+  ]
+}
+
 /** 全书梗概滚动合并 */
 export function mergeGlobalSummaryPrompt(oldSummary: string, chapterTitle: string, chapterSummary: string): ChatMessage[] {
   const old = oldSummary.trim() || '（暂无，这是第一章）'

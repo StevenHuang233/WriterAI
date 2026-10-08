@@ -74,15 +74,53 @@ syncRoute.post('/sync/test', async (c) => {
   }
 })
 
-/** 备份到云端 */
+/** 备份到云端（带冲突检测：云端被别处更新过则拒绝，除非 force） */
 syncRoute.post('/sync/push', async (c) => {
   const state = getSyncState()
   if (!state.provider) badRequest('还没有配置云端')
+  const force = c.req.query('force') === 'true'
+  const provider = createProvider(state.provider)
+
+  // 读取云端，判断是否在别处被更新过
+  let remoteText: string | null = null
+  let remoteSavedAt: number | null = null
+  try {
+    remoteText = await provider.get()
+    if (remoteText) remoteSavedAt = parseSnapshot(JSON.parse(remoteText)).savedAt
+  } catch {
+    // 读取失败不阻止备份
+  }
+  if (!force && remoteSavedAt && state.lastSyncedRemoteAt && remoteSavedAt !== state.lastSyncedRemoteAt) {
+    return c.json(
+      {
+        conflict: true,
+        message: '云端已被其他设备更新，继续上传会覆盖它。请先从云端恢复，或选择强制覆盖。',
+        remoteSavedAt,
+        localSavedAt: state.lastSyncedRemoteAt,
+      },
+      409,
+    )
+  }
+
+  // 上传前把云端上一版另存为 .bak
+  if (remoteText) {
+    try {
+      await provider.putBackup(remoteText)
+    } catch (e) {
+      console.warn('[sync] 保存上一版失败：', e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const snap = exportSnapshot()
   const text = JSON.stringify(snap)
-  await createProvider(state.provider).put(text)
-  // Gist 首次上传会生成 id，需写回
-  const next = saveSyncState({ lastPushAt: Date.now(), dirty: false, provider: state.provider })
+  await provider.put(text)
+  const next = saveSyncState({
+    lastPushAt: Date.now(),
+    lastSyncedRemoteAt: snap.savedAt,
+    dirty: false,
+    // Gist 首次上传会生成 id，需写回
+    provider: state.provider,
+  })
   return c.json({
     ok: true,
     savedAt: snap.savedAt,
@@ -92,11 +130,12 @@ syncRoute.post('/sync/push', async (c) => {
   })
 })
 
-/** 查看云端备份信息（不返回全部正文） */
+/** 查看云端备份信息（不返回全部正文）；source=bak 查看上一版 */
 syncRoute.get('/sync/remote', async (c) => {
   const state = getSyncState()
   if (!state.provider) badRequest('还没有配置云端')
-  const text = await createProvider(state.provider).get()
+  const provider = createProvider(state.provider)
+  const text = c.req.query('source') === 'bak' ? await provider.getBackup() : await provider.get()
   if (!text) return c.json({ exists: false })
   const snap = parseSnapshot(JSON.parse(text))
   const chapters = snap.projects.reduce((s, p) => s + p.chapters.length, 0)
@@ -109,15 +148,27 @@ syncRoute.get('/sync/remote', async (c) => {
   })
 })
 
-/** 从云端恢复 */
+/** 从云端恢复（source=bak 时从上一版恢复） */
 syncRoute.post('/sync/pull', async (c) => {
-  const body = await parseBody(c, z.object({ mode: z.enum(['merge', 'replace']).optional().default('merge') }))
+  const body = await parseBody(
+    c,
+    z.object({
+      mode: z.enum(['merge', 'replace']).optional().default('merge'),
+      source: z.enum(['main', 'bak']).optional().default('main'),
+    }),
+  )
   const state = getSyncState()
   if (!state.provider) badRequest('还没有配置云端')
-  const text = await createProvider(state.provider).get()
-  if (!text) badRequest('云端还没有备份文件')
+  const provider = createProvider(state.provider)
+  const text = body.source === 'bak' ? await provider.getBackup() : await provider.get()
+  if (!text) badRequest(body.source === 'bak' ? '云端还没有上一版备份' : '云端还没有备份文件')
   const snap = parseSnapshot(JSON.parse(text))
   const counts = importSnapshot(snap, body.mode)
-  const next = saveSyncState({ lastPullAt: Date.now(), dirty: false })
+  const next = saveSyncState({
+    lastPullAt: Date.now(),
+    // 从上一版恢复时，云端主文件未变，不更新同步基准
+    lastSyncedRemoteAt: body.source === 'bak' ? state.lastSyncedRemoteAt : snap.savedAt,
+    dirty: false,
+  })
   return c.json({ ok: true, mode: body.mode, savedAt: snap.savedAt, counts, lastPullAt: next.lastPullAt })
 })

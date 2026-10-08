@@ -211,6 +211,8 @@ export async function streamSuggest(
     suffix: string
     mode: SuggestMode
     length?: SuggestLength
+    /** 换一个候选：提高随机度 */
+    alt?: boolean
   },
   handlers: SuggestStreamHandlers,
 ): Promise<void> {

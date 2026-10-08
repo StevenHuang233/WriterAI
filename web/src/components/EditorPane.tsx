@@ -28,11 +28,14 @@ export default function EditorPane() {
   const runRef = useRef<(mode: SuggestMode, manual: boolean) => void>(() => {})
   const runSuggestRef = useRef<(signal: AbortSignal) => void>(() => {})
   const manualModeRef = useRef<'inline' | 'continue' | null>(null)
+  const altRef = useRef(false)
+  const runAltRef = useRef<() => void>(() => {})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const currentTextRef = useRef<string>('')
   const loadedContentRef = useRef<string>('')
   const lastSuggestRef = useRef<{ latencyMs: number } | null>(null)
   const busyRef = useRef(false)
+  const statsThrottleRef = useRef<number>(0)
   const [draftInfo, setDraftInfo] = useState<DraftInfo | null>(null)
 
   // ---------- 触发器生命周期 ----------
@@ -108,8 +111,18 @@ export default function EditorPane() {
 
       let acc = ''
       try {
+        const alt = altRef.current
+        altRef.current = false
         await streamSuggest(
-          { projectId: st.detail.project.id, chapterId: ch.id, prefix, suffix, mode, length: st.prefs.suggestLength },
+          {
+            projectId: st.detail.project.id,
+            chapterId: ch.id,
+            prefix,
+            suffix,
+            mode,
+            length: st.prefs.suggestLength,
+            alt,
+          },
           {
             signal,
             onMeta: (meta) => st.setUi({ usedLoreNames: meta.usedLoreNames }),
@@ -148,6 +161,12 @@ export default function EditorPane() {
     if (!manual) return
     manualModeRef.current = mode
     triggerRef.current?.manualFire()
+  }
+
+  // “换一个”：用更高的随机度重新生成，得到不同的候选
+  runAltRef.current = () => {
+    altRef.current = true
+    runRef.current('inline', true)
   }
 
   // onFire 绑定实际请求（手动触发时使用指定模式，自动触发为 inline）
@@ -202,6 +221,7 @@ export default function EditorPane() {
             }
           },
           onManualTrigger: () => runRef.current('inline', true),
+          onAltSuggestion: () => runAltRef.current(),
           onManualContinue: () => runRef.current('continue', true),
         }),
       ],
@@ -223,7 +243,12 @@ export default function EditorPane() {
         triggerRef.current?.notifyEdit()
         const text = docToText(ed)
         currentTextRef.current = text
-        useStore.getState().setDraftChapterContent(text)
+        // 字数统计做节流：长文档下不必每次按键都刷新状态栏
+        const now = Date.now()
+        if (now - (statsThrottleRef.current ?? 0) > 300) {
+          statsThrottleRef.current = now
+          useStore.getState().setDraftChapterContent(text)
+        }
         scheduleSave(text)
       },
       onSelectionUpdate: () => {
@@ -256,6 +281,14 @@ export default function EditorPane() {
   }
 
   // ---------- 保存 ----------
+  /** 按文档长度自适应保存间隔：长章节避免每秒全量上传 */
+  function saveDelay(len: number): number {
+    if (len < 5000) return 1000
+    if (len < 20000) return 2000
+    if (len < 50000) return 3000
+    return 5000
+  }
+
   function scheduleSave(text: string) {
     const ch = useStore.getState().activeChapter
     if (!ch) return
@@ -268,7 +301,7 @@ export default function EditorPane() {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       void doSave()
-    }, 1000)
+    }, saveDelay(text.length))
   }
 
   async function doSave() {
@@ -384,7 +417,23 @@ export default function EditorPane() {
           快速模型未配置：请复制 .env.example 为 .env 并填写 FAST_* 配置，然后重启服务。
         </div>
       )}
-      <div className="mx-auto mb-2 flex max-w-[760px] items-center gap-2">
+      <div className="mx-auto mb-2 flex max-w-[760px] flex-wrap items-center gap-2">
+        <button
+          className="btn"
+          title="撤销（Cmd/Ctrl+Z）"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => editorRef.current?.commands.undo()}
+        >
+          撤销
+        </button>
+        <button
+          className="btn"
+          title="重做（Cmd/Ctrl+Shift+Z）"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => editorRef.current?.commands.redo()}
+        >
+          重做
+        </button>
         <button
           className="btn"
           title="Cmd/Ctrl + J"
@@ -394,6 +443,15 @@ export default function EditorPane() {
           onClick={() => runRef.current('inline', true)}
         >
           {requesting ? '思考中…' : '立即提词'}
+        </button>
+        <button
+          className="btn"
+          title="换个不同的提示（Alt+]）"
+          disabled={requesting || !fastConfigured}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => runRef.current('inline', true)}
+        >
+          换一个
         </button>
         <button
           className="btn"

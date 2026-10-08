@@ -14,6 +14,8 @@ export interface SyncState extends SyncSettings {
   provider: SyncProviderConfig | null
   lastPushAt: number | null
   lastPullAt: number | null
+  /** 上次同步时云端的快照时间，用于检测别处是否已更新云端 */
+  lastSyncedRemoteAt: number | null
   dirty: boolean
 }
 
@@ -25,6 +27,7 @@ const DEFAULT_STATE: SyncState = {
   autoSyncMinutes: 10,
   lastPushAt: null,
   lastPullAt: null,
+  lastSyncedRemoteAt: null,
   dirty: false,
 }
 

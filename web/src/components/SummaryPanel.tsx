@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiRebuildSummary, apiSummarizeChapter } from '../api/client'
 import { useStore } from '../store/useStore'
 
@@ -10,8 +10,29 @@ export default function SummaryPanel() {
   const openProject = useStore((s) => s.openProject)
   const refreshJobs = useStore((s) => s.refreshJobs)
   const jobs = useStore((s) => s.jobs)
+  const lastAppliedRef = useRef<number>(0)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [jobsVersion, setJobsVersion] = useState(0)
+
+  const running = jobs.some((j) => j.status === 'running' || j.status === 'pending')
+
+  // 有任务在进行时高频轮询，完成后自动刷新面板内容
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(() => void refreshJobs(), 3000)
+    return () => clearInterval(t)
+  }, [running, refreshJobs])
+
+  useEffect(() => {
+    if (running || jobs.length === 0) return
+    const done = jobs.find((j) => j.status === 'done')
+    if (!done || done.updatedAt === lastAppliedRef.current) return
+    lastAppliedRef.current = done.updatedAt
+    setJobsVersion((v) => v + 1)
+    if (detail) void openProject(detail.project.id)
+    setMessage(`《${done.chapterTitle}》摘要已生成`)
+  }, [running, jobs, detail, openProject])
 
   if (!detail) return null
   const chapters = [...detail.chapters].sort((a, b) => a.sort_order - b.sort_order)
@@ -63,7 +84,7 @@ export default function SummaryPanel() {
           className="textarea"
           rows={6}
           defaultValue={detail.project.global_summary}
-          key={`global-${detail.project.id}-${detail.project.global_summary.length}`}
+          key={`global-${detail.project.id}-${detail.project.global_summary.length}-${jobsVersion}`}
           onBlur={(e) => {
             if (e.target.value !== detail.project.global_summary) void updateProject({ global_summary: e.target.value })
           }}
@@ -73,7 +94,11 @@ export default function SummaryPanel() {
 
       <div className="min-h-0 flex-1">
         <div className="mb-1 text-[12px] muted">章节摘要（编辑后自动锁定，AI 不再覆盖）</div>
-        {chapters.map((ch) => (
+        {chapters.map((ch) => {
+          const chapterRunning = jobs.some(
+            (j) => j.chapterId === ch.id && (j.status === 'running' || j.status === 'pending'),
+          )
+          return (
           <div key={ch.id} className="mb-2 rounded-md p-2" style={{ border: '1px solid var(--border)' }}>
             <div className="mb-1 flex items-center gap-2 text-[12px]">
               <span className="min-w-0 flex-1 truncate font-medium">
@@ -82,6 +107,7 @@ export default function SummaryPanel() {
               {ch.summary_locked === 1 && <span className="tag" style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}>已锁定</span>}
               <button
                 className="btn px-2 py-0.5"
+                disabled={chapterRunning}
                 onClick={async () => {
                   try {
                     await apiSummarizeChapter(ch.id)
@@ -92,7 +118,7 @@ export default function SummaryPanel() {
                   }
                 }}
               >
-                立即摘要
+                {chapterRunning ? '生成中…' : '立即摘要'}
               </button>
               {ch.summary_locked === 1 && (
                 <button className="btn px-2 py-0.5" onClick={() => void setChapterSummary(ch.id, ch.summary, false)}>
@@ -104,14 +130,15 @@ export default function SummaryPanel() {
               className="textarea"
               rows={3}
               defaultValue={ch.summary}
-              key={`summary-${ch.id}-${ch.summary}`}
+              key={`summary-${ch.id}-${ch.summary.length}-${jobsVersion}`}
               placeholder={ch.id === activeChapterId ? '（当前章，切换章节或写满 1500 字后自动生成）' : '（暂无摘要）'}
               onBlur={(e) => {
                 if (e.target.value !== ch.summary) void setChapterSummary(ch.id, e.target.value)
               }}
             />
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {jobs.length > 0 && (

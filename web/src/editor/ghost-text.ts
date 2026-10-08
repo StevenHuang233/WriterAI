@@ -24,6 +24,8 @@ export interface GhostTextOptions {
   onDismiss: () => void
   /** Cmd/Ctrl+J 手动提词 */
   onManualTrigger: () => void
+  /** Alt+] 换一个提示 */
+  onAltSuggestion: () => void
   /** Cmd/Ctrl+Shift+J 手动续写一段 */
   onManualContinue: () => void
 }
@@ -55,6 +57,7 @@ export const GhostText = Extension.create<GhostTextOptions, null>({
       onConsume: () => {},
       onDismiss: () => {},
       onManualTrigger: () => {},
+      onAltSuggestion: () => {},
       onManualContinue: () => {},
     }
   },
@@ -122,6 +125,11 @@ export const GhostText = Extension.create<GhostTextOptions, null>({
           return true
         }).run()
         opts.onDismiss()
+        return true
+      },
+
+      'Alt-]': () => {
+        opts.onAltSuggestion()
         return true
       },
 

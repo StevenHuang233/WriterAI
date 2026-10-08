@@ -14,8 +14,14 @@ export interface CloudProvider {
   put(text: string): Promise<void>
   /** 读取快照文本，不存在返回 null */
   get(): Promise<string | null>
+  /** 把上一版内容另存为备份（.bak），避免一次坏备份覆盖好备份 */
+  putBackup(text: string): Promise<void>
+  /** 读取备份内容，不存在返回 null */
+  getBackup(): Promise<string | null>
   test(): Promise<ProviderResult>
 }
+
+const BACKUP_SUFFIX = '.bak'
 
 export type SyncProviderType = 'local' | 's3' | 'webdav' | 'gist'
 
@@ -79,6 +85,17 @@ class LocalProvider implements CloudProvider {
     return readFileSync(this.file, 'utf8')
   }
 
+  async putBackup(text: string): Promise<void> {
+    mkdirSync(this.cfg.dir, { recursive: true })
+    writeFileSync(this.file + BACKUP_SUFFIX, text, 'utf8')
+  }
+
+  async getBackup(): Promise<string | null> {
+    const f = this.file + BACKUP_SUFFIX
+    if (!existsSync(f)) return null
+    return readFileSync(f, 'utf8')
+  }
+
   async test(): Promise<ProviderResult> {
     try {
       if (!this.cfg.dir) return { ok: false, message: '请先填写目录路径' }
@@ -108,10 +125,10 @@ class S3Provider implements CloudProvider {
     })
   }
 
-  private url(): string {
+  private url(bak = false): string {
     const base = this.cfg.endpoint.replace(/\/+$/, '')
     const key = this.cfg.key.replace(/^\/+/, '') || FILE_NAME
-    return `${base}/${this.cfg.bucket}/${key}`
+    return `${base}/${this.cfg.bucket}/${key}${bak ? BACKUP_SUFFIX : ''}`
   }
 
   async put(text: string): Promise<void> {
@@ -127,6 +144,22 @@ class S3Provider implements CloudProvider {
     const res = await this.client().fetch(this.url(), { method: 'GET' })
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`下载失败 ${res.status} ${await res.text()}`)
+    return res.text()
+  }
+
+  async putBackup(text: string): Promise<void> {
+    const res = await this.client().fetch(this.url(true), {
+      method: 'PUT',
+      body: text,
+      headers: { 'content-type': 'application/json' },
+    })
+    if (!res.ok) throw new Error(`备份失败 ${res.status} ${await res.text()}`)
+  }
+
+  async getBackup(): Promise<string | null> {
+    const res = await this.client().fetch(this.url(true), { method: 'GET' })
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`读取备份失败 ${res.status} ${await res.text()}`)
     return res.text()
   }
 
@@ -150,10 +183,12 @@ class WebdavProvider implements CloudProvider {
 
   constructor(private cfg: WebdavConfig) {}
 
-  private url(): string {
+  private url(bak = false): string {
     const base = this.cfg.url.replace(/\/+$/, '')
-    if (base.endsWith(FILE_NAME)) return base
-    return `${base}/${FILE_NAME}`
+    const file = FILE_NAME + (bak ? BACKUP_SUFFIX : '')
+    if (base.endsWith(file)) return base
+    if (base.endsWith(FILE_NAME)) return base + (bak ? BACKUP_SUFFIX : '')
+    return `${base}/${file}`
   }
 
   private auth(): string {
@@ -173,6 +208,22 @@ class WebdavProvider implements CloudProvider {
     const res = await fetch(this.url(), { method: 'GET', headers: { authorization: this.auth() } })
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`下载失败 ${res.status} ${await res.text()}`)
+    return res.text()
+  }
+
+  async putBackup(text: string): Promise<void> {
+    const res = await fetch(this.url(true), {
+      method: 'PUT',
+      body: text,
+      headers: { authorization: this.auth(), 'content-type': 'application/json' },
+    })
+    if (!res.ok) throw new Error(`备份失败 ${res.status} ${await res.text()}`)
+  }
+
+  async getBackup(): Promise<string | null> {
+    const res = await fetch(this.url(true), { method: 'GET', headers: { authorization: this.auth() } })
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`读取备份失败 ${res.status} ${await res.text()}`)
     return res.text()
   }
 
@@ -235,6 +286,25 @@ class GistProvider implements CloudProvider {
     if (!res.ok) throw new Error(`读取失败 ${res.status} ${await res.text()}`)
     const data = (await res.json()) as { files?: Record<string, { content?: string } | undefined> }
     return data.files?.[FILE_NAME]?.content ?? null
+  }
+
+  async putBackup(text: string): Promise<void> {
+    if (!this.cfg.gistId) return
+    const res = await fetch(`https://api.github.com/gists/${this.cfg.gistId}`, {
+      method: 'PATCH',
+      headers: this.headers(),
+      body: JSON.stringify({ files: { [FILE_NAME + BACKUP_SUFFIX]: { content: text } } }),
+    })
+    if (!res.ok) throw new Error(`备份失败 ${res.status} ${await res.text()}`)
+  }
+
+  async getBackup(): Promise<string | null> {
+    if (!this.cfg.gistId) return null
+    const res = await fetch(`https://api.github.com/gists/${this.cfg.gistId}`, { headers: this.headers() })
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`读取备份失败 ${res.status} ${await res.text()}`)
+    const data = (await res.json()) as { files?: Record<string, { content?: string } | undefined> }
+    return data.files?.[FILE_NAME + BACKUP_SUFFIX]?.content ?? null
   }
 
   async test(): Promise<ProviderResult> {

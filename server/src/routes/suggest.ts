@@ -17,6 +17,8 @@ const SuggestSchema = z.object({
   suffix: z.string().max(2000),
   mode: z.enum(['inline', 'continue']),
   length: z.enum(['short', 'medium', 'long']).optional(),
+  /** 换一个候选：提高随机度以获得不同结果 */
+  alt: z.boolean().optional(),
 })
 
 const FeedbackSchema = z.object({
@@ -74,10 +76,11 @@ suggestRoute.post('/suggest', async (c) => {
   const length = body.length ?? 'medium'
   const inlineTokens = { short: 400, medium: 600, long: 900 } as const
   const continueTokens = { short: 1000, medium: 2000, long: 3000 } as const
+  const temperature = body.alt ? 1.05 : 0.8
   const chatOpts =
     body.mode === 'inline'
-      ? { temperature: 0.8, maxTokens: inlineTokens[length], stop: ['\n\n'] as string[] }
-      : { temperature: 0.8, maxTokens: continueTokens[length] }
+      ? { temperature, maxTokens: inlineTokens[length], stop: ['\n\n'] as string[] }
+      : { temperature, maxTokens: continueTokens[length] }
 
   return streamSSE(c, async (stream) => {
     // 注意：不能把 AbortSignal 传给 openai SDK（在 streamSSE 回调内会导致流静默为空），

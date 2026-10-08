@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ChapterList from './components/ChapterList'
 import EditorPane from './components/EditorPane'
 import LorePanel from './components/LorePanel'
@@ -161,6 +161,25 @@ function EditorPage() {
   const closeProject = useStore((s) => s.closeProject)
   const activeChapterId = useStore((s) => s.activeChapter?.id ?? null)
   const editorReloadToken = useStore((s) => s.editorReloadToken)
+  const setActiveChapter = useStore((s) => s.setActiveChapter)
+  // 选择器必须返回稳定引用，排序放 useMemo（否则会陷入无限重渲染）
+  const chaptersRaw = useStore((s) => s.detail?.chapters)
+  const chapterOptions = useMemo(
+    () => (chaptersRaw ? [...chaptersRaw].sort((a, b) => a.sort_order - b.sort_order) : []),
+    [chaptersRaw],
+  )
+  const [showRightPanel, setShowRightPanel] = useState(() => window.innerWidth >= 1100)
+  const [panelManual, setPanelManual] = useState(false)
+
+  // 窄窗口自动收起右侧面板；用户手动切换过之后不再自动干预
+  useEffect(() => {
+    const onResize = () => {
+      if (panelManual) return
+      setShowRightPanel(window.innerWidth >= 1100)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [panelManual])
   const [tab, setTab] = useState<RightTab>('lore')
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -191,7 +210,29 @@ function EditorPage() {
           ← 项目
         </button>
         <span className="font-semibold">{project.title}</span>
+        <select
+          className="select w-auto max-w-[180px]"
+          value={activeChapterId ?? ''}
+          onChange={(e) => { if (e.target.value) void setActiveChapter(e.target.value) }}
+          title="快速跳转到章节"
+        >
+          {chapterOptions.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.sort_order}. {c.title}
+            </option>
+          ))}
+        </select>
         <span className="flex-1" />
+        <button
+          className="btn"
+          onClick={() => {
+            setPanelManual(true)
+            setShowRightPanel((v) => !v)
+          }}
+          title="隐藏 / 显示右侧面板（窄屏或专注写作）"
+        >
+          {showRightPanel ? '隐藏面板' : '显示面板'}
+        </button>
         <a className="btn" href={apiExportUrl(project.id, 'txt')} download>
           导出 txt
         </a>
@@ -207,7 +248,7 @@ function EditorPage() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-52 shrink-0 p-3" style={{ borderRight: '1px solid var(--border)' }}>
+        <aside className="hidden w-44 shrink-0 p-3 sm:block md:w-52" style={{ borderRight: '1px solid var(--border)' }}>
           <div className="mb-2 text-[12px] font-semibold muted">章节</div>
           <div className="h-[calc(100%-28px)]">
             <ChapterList />
@@ -219,7 +260,8 @@ function EditorPage() {
           <EditorPane key={`${activeChapterId ?? 'none'}:${editorReloadToken}`} />
         </main>
 
-        <aside className="w-80 shrink-0 p-3" style={{ borderLeft: '1px solid var(--border)' }}>
+        {showRightPanel && (
+        <aside className="w-72 shrink-0 p-3 xl:w-80" style={{ borderLeft: '1px solid var(--border)' }}>
           <div className="mb-2 flex flex-wrap gap-1">
             {RIGHT_TABS.map((t) => (
               <span key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
@@ -237,6 +279,7 @@ function EditorPage() {
             {tab === 'history' && <HistoryPanel />}
           </div>
         </aside>
+        )}
       </div>
 
       <StatusBar />

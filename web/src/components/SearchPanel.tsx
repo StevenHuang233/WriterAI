@@ -7,11 +7,13 @@ export default function SearchPanel() {
   const setActiveChapter = useStore((s) => s.setActiveChapter)
   const setJumpTarget = useStore((s) => s.setJumpTarget)
   const reloadActiveChapter = useStore((s) => s.reloadActiveChapter)
+  const activeChapterId = useStore((s) => s.activeChapter?.id ?? null)
   const [query, setQuery] = useState('')
   const [replacement, setReplacement] = useState('')
   const [matches, setMatches] = useState<SearchMatch[]>([])
   const [total, setTotal] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [currentOnly, setCurrentOnly] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
   async function runSearch() {
@@ -20,8 +22,11 @@ export default function SearchPanel() {
     setMessage(null)
     try {
       const r = await apiSearch(projectId, query.trim())
-      setMatches(r.matches)
-      setTotal(r.total)
+      const list = currentOnly && activeChapterId
+        ? r.matches.filter((m) => m.chapterId === activeChapterId)
+        : r.matches
+      setMatches(list)
+      setTotal(list.length)
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e))
     } finally {
@@ -40,7 +45,11 @@ export default function SearchPanel() {
     setBusy(true)
     setMessage(null)
     try {
-      const r = await apiReplace(projectId, { query: query.trim(), replacement })
+      const r = await apiReplace(projectId, {
+        query: query.trim(),
+        replacement,
+        ...(currentOnly && activeChapterId ? { chapterIds: [activeChapterId] } : {}),
+      })
       setMessage(`已替换 ${r.replacements} 处，涉及 ${r.chapters} 章`)
       setMatches([])
       setTotal(null)
@@ -69,6 +78,11 @@ export default function SearchPanel() {
           搜索
         </button>
       </div>
+
+      <label className="flex items-center gap-1 text-[12px]">
+        <input type="checkbox" checked={currentOnly} onChange={(e) => setCurrentOnly(e.target.checked)} />
+        仅当前章节
+      </label>
 
       <div className="flex gap-1">
         <input
