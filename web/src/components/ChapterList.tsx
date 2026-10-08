@@ -1,8 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
 
 export default function ChapterList() {
-  const chapters = useStore((s) => (s.detail ? [...s.detail.chapters].sort((a, b) => a.sort_order - b.sort_order) : []))
+  // 注意：选择器必须返回稳定引用，派生数据（排序/过滤）放到 useMemo 里，
+  // 否则 useSyncExternalStore 会因快照引用变化陷入无限重渲染
+  const chaptersRaw = useStore((s) => s.detail?.chapters)
+  const chapters = useMemo(
+    () => (chaptersRaw ? [...chaptersRaw].sort((a, b) => a.sort_order - b.sort_order) : []),
+    [chaptersRaw],
+  )
   const activeChapterId = useStore((s) => s.activeChapter?.id ?? null)
   const createChapter = useStore((s) => s.createChapter)
   const setActiveChapter = useStore((s) => s.setActiveChapter)

@@ -16,12 +16,12 @@ export default function StatusBar() {
   const saveState = useStore((s) => s.saveState)
   const lastLatencyMs = useStore((s) => s.lastLatencyMs)
   const lastSuggestError = useStore((s) => s.lastSuggestError)
-  const chapters = useStore((s) => s.detail?.chapters ?? [])
+  const chapters = useStore((s) => s.detail?.chapters)
   const activeChapter = useStore((s) => s.activeChapter)
   const currentChars = useStore((s) => s.currentChapterChars)
 
   const totalChars =
-    chapters.reduce((s, c) => s + c.content_length, 0) - (activeChapter?.content_length ?? 0) + currentChars
+    (chapters?.reduce((s, c) => s + c.content_length, 0) ?? 0) - (activeChapter?.content_length ?? 0) + currentChars
 
   return (
     <div

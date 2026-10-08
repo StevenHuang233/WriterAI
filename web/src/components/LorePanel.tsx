@@ -5,7 +5,7 @@ import { LORE_TYPE_LABELS, type LoreType } from '../types'
 const TYPE_KEYS = Object.keys(LORE_TYPE_LABELS) as LoreType[]
 
 export default function LorePanel() {
-  const lore = useStore((s) => s.detail?.lore ?? [])
+  const lore = useStore((s) => s.detail?.lore)
   const createLore = useStore((s) => s.createLore)
   const updateLore = useStore((s) => s.updateLore)
   const deleteLore = useStore((s) => s.deleteLore)
@@ -13,8 +13,9 @@ export default function LorePanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
 
-  const list = lore.filter((l) => filter === 'all' || l.type === filter)
-  const selected = lore.find((l) => l.id === selectedId) ?? null
+  const list = (lore ?? []).filter((l) => filter === 'all' || l.type === filter)
+  const entries = lore ?? []
+  const selected = entries.find((l) => l.id === selectedId) ?? null
 
   async function handleCreate() {
     const name = newName.trim()
@@ -37,11 +38,11 @@ export default function LorePanel() {
     <div className="flex h-full flex-col gap-2">
       <div className="flex flex-wrap gap-1">
         <span className={`tab ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>
-          全部 {lore.length}
+          全部 {entries.length}
         </span>
         {TYPE_KEYS.map((t) => (
           <span key={t} className={`tab ${filter === t ? 'active' : ''}`} onClick={() => setFilter(t)}>
-            {LORE_TYPE_LABELS[t]} {lore.filter((l) => l.type === t).length}
+            {LORE_TYPE_LABELS[t]} {entries.filter((l) => l.type === t).length}
           </span>
         ))}
       </div>
