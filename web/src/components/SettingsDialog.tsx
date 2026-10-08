@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useStore } from '../store/useStore'
 
 interface Props {
@@ -8,6 +9,14 @@ export default function SettingsDialog({ onClose }: Props) {
   const prefs = useStore((s) => s.prefs)
   const setPrefs = useStore((s) => s.setPrefs)
   const settingsInfo = useStore((s) => s.settingsInfo)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   return (
     <div

@@ -13,6 +13,14 @@ export function textToBlocks(text: string): TextBlock[] {
   }))
 }
 
+/**
+ * 章节纯文本 → 完整文档 JSON。
+ * 注意：TipTap 的 content / setContent 必须传 {type:'doc'}，传数组会被解析为 Fragment 导致初始化崩溃。
+ */
+export function textToDoc(text: string): { type: 'doc'; content: TextBlock[] } {
+  return { type: 'doc', content: textToBlocks(text) }
+}
+
 /** 编辑器文档 → 章节纯文本（\n 分段） */
 export function docToText(editor: Editor): string {
   const blocks: string[] = []

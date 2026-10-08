@@ -20,8 +20,9 @@ export default function StatusBar() {
   const activeChapter = useStore((s) => s.activeChapter)
   const currentChars = useStore((s) => s.currentChapterChars)
 
+  // 其他章节用列表中的长度，当前章用编辑器实时长度
   const totalChars =
-    (chapters?.reduce((s, c) => s + c.content_length, 0) ?? 0) - (activeChapter?.content_length ?? 0) + currentChars
+    (chapters?.reduce((s, c) => (c.id === activeChapter?.id ? s : s + c.content_length), 0) ?? 0) + currentChars
 
   return (
     <div

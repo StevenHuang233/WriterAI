@@ -4,7 +4,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { GhostText } from '../editor/ghost-text'
 import { IdleTrigger } from '../editor/idle-trigger'
 import { cleanSuggestion, finalizeSuggestion } from '../editor/postprocess'
-import { docToText, textToBlocks } from '../editor/text'
+import { docToText, textToDoc } from '../editor/text'
 import { apiFeedback, apiMaybeSummarize, streamSuggest } from '../api/client'
 import { draftKey, useStore } from '../store/useStore'
 import type { SuggestMode } from '../types'
@@ -191,7 +191,7 @@ export default function EditorPane() {
           onManualContinue: () => runRef.current('continue', true),
         }),
       ],
-      content: chapter ? textToBlocks(chapter.content) : [{ type: 'paragraph' }],
+      content: textToDoc(chapter?.content ?? ''),
       editorProps: {
         attributes: { class: 'novel-editor' },
         handleDOMEvents: {
@@ -305,7 +305,7 @@ export default function EditorPane() {
   function restoreDraft() {
     const editorInstance = editorRef.current
     if (!editorInstance || !draftInfo) return
-    editorInstance.commands.setContent(textToBlocks(draftInfo.content))
+    editorInstance.commands.setContent(textToDoc(draftInfo.content))
     currentTextRef.current = draftInfo.content
     scheduleSave(draftInfo.content)
     setDraftInfo(null)

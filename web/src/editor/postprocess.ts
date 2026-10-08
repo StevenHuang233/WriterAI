@@ -6,9 +6,15 @@ const PUNCTUATION = /[，。！？；：、…—”』」）,.!?;:)\]】]/
  */
 export function cleanSuggestion(raw: string, prefix: string, suffix: string): string {
   let t = raw.trim()
-  // 去掉模型可能添加的首尾引号
-  while (t.length > 0 && /["“”'‘’「」『』]/.test(t[0]!)) t = t.slice(1)
-  while (t.length > 0 && /["“”'‘’「」『』]/.test(t[t.length - 1]!)) t = t.slice(0, -1)
+  const prevChar = prefix.trimEnd().slice(-1)
+  if (/[“「『"]/.test(prevChar)) {
+    // 前文已打开引号：去掉模型重复的开引号
+    while (t.length > 0 && /[“「『"]/.test(t[0]!)) t = t.slice(1)
+  } else if (!/[：:，,]/.test(prevChar)) {
+    // 前文不是对白引导：整段被引号包裹时视为模型多加的包装，去掉
+    const m = t.match(/^[“"「『]([^“”"「」『』]*)[”"」』]$/)
+    if (m) t = m[1]!
+  }
   // 去掉与光标前文本末尾重叠的部分
   if (prefix.length > 0 && t.length > 0) {
     const max = Math.min(t.length, 30, prefix.length)
@@ -39,17 +45,29 @@ export function cleanSuggestion(raw: string, prefix: string, suffix: string): st
 export function finalizeSuggestion(raw: string, prefix: string, suffix: string): string {
   const t = cleanSuggestion(raw, prefix, suffix)
   if (!t) return ''
-  const m = t.match(PUNCTUATION)
-  if (m && m.index !== undefined && m.index < t.length - 1) {
-    return t.slice(0, m.index + 1)
+  let last = -1
+  for (let i = t.length - 1; i >= 0; i--) {
+    if (PUNCTUATION.test(t[i]!)) {
+      last = i
+      break
+    }
   }
-  return t
+  if (last < 0) return t
+  return t.slice(0, extendClosers(t, last + 1))
 }
 
-/** 部分接受：返回到下一个标点为止（含标点）的内容 */
+const CLOSERS = /[”’」』）)\]】"]/
+
+/** 标点后紧跟的闭合引号/括号一起算进来 */
+function extendClosers(text: string, i: number): number {
+  while (i < text.length && CLOSERS.test(text[i]!)) i++
+  return i
+}
+
+/** 部分接受：返回到下一个标点为止（含标点及其后的闭合引号）的内容 */
 export function splitAtPunctuation(text: string): { accepted: string; rest: string } {
   const m = text.match(PUNCTUATION)
   if (!m || m.index === undefined) return { accepted: text, rest: '' }
-  const i = m.index + 1
+  const i = extendClosers(text, m.index + 1)
   return { accepted: text.slice(0, i), rest: text.slice(i) }
 }
