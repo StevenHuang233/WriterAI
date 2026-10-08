@@ -41,6 +41,14 @@ toolsRoute.get('/chapters/:id/snapshots', (c) => {
   return c.json(listSnapshots(id))
 })
 
+/** 查看某个版本的内容（恢复前预览） */
+toolsRoute.get('/snapshots/:id', (c) => {
+  const id = c.req.param('id')
+  const snap = getSnapshot(id)
+  if (!snap) notFound('版本不存在')
+  return c.json(snap)
+})
+
 toolsRoute.post('/chapters/:id/snapshots', async (c) => {
   const id = c.req.param('id')
   const ch = getChapter(id)
@@ -59,7 +67,7 @@ toolsRoute.post('/snapshots/:id/restore', (c) => {
   // 恢复前先给当前内容留一个版本，防止再次丢失
   createSnapshot(ch.id, ch.content, '恢复前自动保存')
   updateChapter(ch.id, { content: snap.content })
-  recordStat(ch.project_id, ch.id, snap.content.length - ch.content.length)
+  // 恢复不计入写作统计（统计只反映真实写作量）
   return c.json({ ok: true, chapter: getChapter(ch.id) })
 })
 

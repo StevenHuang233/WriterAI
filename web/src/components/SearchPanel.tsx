@@ -6,6 +6,7 @@ export default function SearchPanel() {
   const projectId = useStore((s) => s.detail?.project.id ?? null)
   const setActiveChapter = useStore((s) => s.setActiveChapter)
   const setJumpTarget = useStore((s) => s.setJumpTarget)
+  const reloadActiveChapter = useStore((s) => s.reloadActiveChapter)
   const [query, setQuery] = useState('')
   const [replacement, setReplacement] = useState('')
   const [matches, setMatches] = useState<SearchMatch[]>([])
@@ -43,6 +44,8 @@ export default function SearchPanel() {
       setMessage(`已替换 ${r.replacements} 处，涉及 ${r.chapters} 章`)
       setMatches([])
       setTotal(null)
+      // 重新加载当前章节：否则编辑器里还是旧内容，继续打字会把替换结果覆盖回去
+      await reloadActiveChapter()
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e))
     } finally {

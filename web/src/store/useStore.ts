@@ -4,6 +4,7 @@ import {
   apiDeleteProject, apiGetProject, apiJobs, apiListProjects, apiPatchChapter, apiPatchLore,
   apiPatchProject, apiSettings,
 } from '../api/client'
+import { apiGetChapter } from '../api/chapter'
 import type {
   Chapter, ChapterMeta, JobInfo, LoreEntry, LoreType, ProjectDetail, ProjectMeta,
   SettingsInfo, SuggestLength,
@@ -56,6 +57,8 @@ interface Store {
   lastSuggestError: string | null
   currentChapterChars: number
   jumpTarget: JumpTarget | null
+  /** 递增以强制编辑器重新加载（外部改动正文后使用） */
+  editorReloadToken: number
 
   init: () => Promise<void>
   setPrefs: (patch: Partial<Prefs>) => void
@@ -75,6 +78,8 @@ interface Store {
   updateChapterOutline: (id: string, outline: string) => Promise<void>
   setDraftChapterContent: (content: string) => void
   setJumpTarget: (t: JumpTarget | null) => void
+  /** 从服务端重新拉取当前章节正文并强制编辑器刷新（替换、恢复版本等外部改动后调用） */
+  reloadActiveChapter: () => Promise<void>
 
   updateProject: (patch: Partial<Pick<ProjectDetail['project'], 'title' | 'synopsis' | 'style_note' | 'global_summary'>>) => Promise<void>
 
@@ -113,6 +118,7 @@ export const useStore = create<Store>((set, get) => ({
   lastSuggestError: null,
   currentChapterChars: 0,
   jumpTarget: null,
+  editorReloadToken: 0,
 
   init: async () => {
     applyTheme(get().prefs.theme)
@@ -246,6 +252,18 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setJumpTarget: (t) => set({ jumpTarget: t }),
+
+  reloadActiveChapter: async () => {
+    const active = get().activeChapter
+    if (!active) return
+    const ch = await apiGetChapter(active.id)
+    set((s) => ({
+      activeChapter: ch,
+      currentChapterChars: ch.content.length,
+      saveState: 'saved' as const,
+      editorReloadToken: s.editorReloadToken + 1,
+    }))
+  },
 
   updateChapterOutline: async (id, outline) => {
     const detail = get().detail

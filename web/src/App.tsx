@@ -160,9 +160,26 @@ function EditorPage() {
   const project = useStore((s) => s.detail!.project)
   const closeProject = useStore((s) => s.closeProject)
   const activeChapterId = useStore((s) => s.activeChapter?.id ?? null)
+  const editorReloadToken = useStore((s) => s.editorReloadToken)
   const [tab, setTab] = useState<RightTab>('lore')
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
+
+  // Cmd/Ctrl+F 打开搜索面板（并阻止浏览器默认查找，避免抢走焦点）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setTab('search')
+        window.setTimeout(() => {
+          const input = document.querySelector<HTMLInputElement>('input[placeholder="搜索（跨全部章节）"]')
+          input?.focus()
+        }, 50)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div className="flex h-full flex-col">
@@ -198,8 +215,8 @@ function EditorPage() {
         </aside>
 
         <main className="min-w-0 flex-1 p-4">
-          {/* 按章节 id 重挂载，确保编辑器内容与章节严格对应（避免残留上一章内容） */}
-          <EditorPane key={activeChapterId ?? 'none'} />
+          {/* 按章节 id + 重载计数 重挂载：切换章节或外部改动正文后都强制刷新编辑器 */}
+          <EditorPane key={`${activeChapterId ?? 'none'}:${editorReloadToken}`} />
         </main>
 
         <aside className="w-80 shrink-0 p-3" style={{ borderLeft: '1px solid var(--border)' }}>

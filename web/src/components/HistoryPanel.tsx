@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react'
-import { apiCreateSnapshot, apiRestoreSnapshot, apiSnapshots, type SnapshotMeta } from '../api/client'
+import { apiCreateSnapshot, apiRestoreSnapshot, apiSnapshotContent, apiSnapshots, type SnapshotMeta } from '../api/client'
 import { useStore } from '../store/useStore'
 
 export default function HistoryPanel() {
   const chapterId = useStore((s) => s.activeChapter?.id ?? null)
   const chapterTitle = useStore((s) => s.activeChapter?.title ?? '')
   const currentLen = useStore((s) => s.activeChapter?.content.length ?? 0)
-  const projectId = useStore((s) => s.detail?.project.id ?? null)
-  const openProject = useStore((s) => s.openProject)
-  const setActiveChapter = useStore((s) => s.setActiveChapter)
+  const reloadActiveChapter = useStore((s) => s.reloadActiveChapter)
   const [snaps, setSnaps] = useState<SnapshotMeta[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -39,17 +37,25 @@ export default function HistoryPanel() {
   }
 
   async function restore(id: string) {
-    if (!confirm('恢复到这个版本？当前内容会先自动存为一个版本，不会丢失。')) return
+    // 恢复前先预览，避免恢复到错误的版本
+    let preview = ''
+    try {
+      const snap = await apiSnapshotContent(id)
+      preview = snap.content.slice(0, 120)
+    } catch {
+      // 预览失败不影响恢复
+    }
+    const tip = preview
+      ? `将恢复到此版本：\n\n“${preview}${preview.length >= 120 ? '…' : ''}”\n\n当前内容会先自动存为一个版本，不会丢失。确定继续？`
+      : '恢复到这个版本？当前内容会先自动存为一个版本，不会丢失。'
+    if (!confirm(tip)) return
     setBusy(true)
     setMessage(null)
     try {
       await apiRestoreSnapshot(id)
       setMessage('已恢复')
-      // 原地重新加载该章节，避免整页刷新把用户踢回项目列表
-      if (projectId && chapterId) {
-        await openProject(projectId)
-        await setActiveChapter(chapterId)
-      }
+      // 原地重新加载该章节正文（避免界面仍是旧内容，也避免整页刷新踢回项目列表）
+      await reloadActiveChapter()
       await load()
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e))

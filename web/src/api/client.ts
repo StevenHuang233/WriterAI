@@ -118,6 +118,8 @@ export const apiCreateSnapshot = (chapterId: string, label?: string) =>
   })
 export const apiRestoreSnapshot = (id: string) =>
   api<{ ok: boolean; chapter: Chapter }>(`/api/snapshots/${id}/restore`, { method: 'POST' })
+export const apiSnapshotContent = (id: string) =>
+  api<{ id: string; chapter_id: string; content: string; label: string; created_at: number }>(`/api/snapshots/${id}`)
 export const apiSearch = (projectId: string, q: string) =>
   api<{ query: string; matches: SearchMatch[]; total: number }>(`/api/projects/${projectId}/search?q=${encodeURIComponent(q)}`)
 export const apiReplace = (projectId: string, body: { query: string; replacement: string; chapterIds?: string[] }) =>

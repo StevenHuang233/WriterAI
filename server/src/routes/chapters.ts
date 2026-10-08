@@ -25,7 +25,8 @@ function maybeSnapshot(chapterId: string, oldContent: string, newContent: string
   const snaps = listSnapshots(chapterId)
   const latest = snaps[0]
   if (!latest) {
-    createSnapshot(chapterId, oldContent, '初始版本')
+    // 首个版本不存空内容：否则用户误恢复到“初始版本”会丢失全部正文
+    if (oldContent.trim().length > 0) createSnapshot(chapterId, oldContent, '初始版本')
     return
   }
   const timeDue = Date.now() - latest.created_at >= AUTO_SNAPSHOT_MS
