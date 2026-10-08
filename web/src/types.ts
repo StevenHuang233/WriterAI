@@ -84,3 +84,11 @@ export interface SuggestMeta {
 }
 
 export type SuggestMode = 'inline' | 'continue'
+
+export type SuggestLength = 'short' | 'medium' | 'long'
+
+export const SUGGEST_LENGTH_LABELS: Record<SuggestLength, string> = {
+  short: '短（1 句）',
+  medium: '中（默认）',
+  long: '长（几句）',
+}

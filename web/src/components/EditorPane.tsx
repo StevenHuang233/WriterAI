@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { GhostText } from '../editor/ghost-text'
+import { GhostText, ghostPluginKey } from '../editor/ghost-text'
 import { IdleTrigger } from '../editor/idle-trigger'
 import { cleanSuggestion, finalizeSuggestion } from '../editor/postprocess'
 import { docToText, textToDoc } from '../editor/text'
 import { apiFeedback, apiMaybeSummarize, streamSuggest } from '../api/client'
 import { draftKey, useStore } from '../store/useStore'
-import type { SuggestMode } from '../types'
+import { SUGGEST_LENGTH_LABELS, type SuggestMode } from '../types'
 
 interface DraftInfo {
   content: string
@@ -18,7 +18,10 @@ export default function EditorPane() {
   const chapter = useStore((s) => s.activeChapter)
   const projectId = useStore((s) => s.detail?.project.id ?? null)
   const fastConfigured = useStore((s) => s.settingsInfo?.fast.configured ?? false)
+  const strongConfigured = useStore((s) => s.settingsInfo?.strong.configured ?? false)
   const prefs = useStore((s) => s.prefs)
+  const triggerState = useStore((s) => s.triggerState)
+  const requesting = triggerState === 'requesting'
 
   const editorRef = useRef<ReturnType<typeof useEditor> | null>(null)
   const triggerRef = useRef<IdleTrigger | null>(null)
@@ -29,6 +32,7 @@ export default function EditorPane() {
   const currentTextRef = useRef<string>('')
   const loadedContentRef = useRef<string>('')
   const lastSuggestRef = useRef<{ latencyMs: number } | null>(null)
+  const busyRef = useRef(false)
   const [draftInfo, setDraftInfo] = useState<DraftInfo | null>(null)
 
   // ---------- 触发器生命周期 ----------
@@ -82,7 +86,12 @@ export default function EditorPane() {
         if (document.visibilityState !== 'visible') return
         if (!editor.state.selection.empty) return
         if (editor.state.doc.textContent.length === 0) return
+        // 上一个提词还没被覆盖掉（仍在显示）→ 不再提词，避免浪费调用
+        if (ghostPluginKey.getState(editor.state)) return
+        // 已有请求在进行中 → 跳过
+        if (busyRef.current) return
       }
+      // 手动触发时，上一个请求已由 trigger.manualFire() 取消
       if (!st.settingsInfo?.[mode === 'inline' ? 'fast' : 'strong'].configured) {
         st.setUi({ lastSuggestError: mode === 'inline' ? '快速模型未配置，请检查 .env' : '强模型未配置，请检查 .env' })
         return
@@ -93,11 +102,12 @@ export default function EditorPane() {
       const suffix = editor.state.doc.textBetween(pos, Math.min(editor.state.doc.content.size, pos + 500), '\n\n')
       const startedAt = Date.now()
       editor.commands.clearGhost()
+      busyRef.current = true
 
       let acc = ''
       try {
         await streamSuggest(
-          { projectId: st.detail.project.id, chapterId: ch.id, prefix, suffix, mode },
+          { projectId: st.detail.project.id, chapterId: ch.id, prefix, suffix, mode, length: st.prefs.suggestLength },
           {
             signal,
             onMeta: (meta) => st.setUi({ usedLoreNames: meta.usedLoreNames }),
@@ -125,6 +135,8 @@ export default function EditorPane() {
         if (signal?.aborted) return
         triggerRef.current?.requestSettled()
         useStore.getState().setUi({ lastSuggestError: e instanceof Error ? e.message : String(e) })
+      } finally {
+        busyRef.current = false
       }
     },
     [],
@@ -348,6 +360,32 @@ export default function EditorPane() {
           快速模型未配置：请复制 .env.example 为 .env 并填写 FAST_* 配置，然后重启服务。
         </div>
       )}
+      <div className="mx-auto mb-2 flex max-w-[760px] items-center gap-2">
+        <button
+          className="btn"
+          title="Cmd/Ctrl + J"
+          disabled={requesting || !fastConfigured}
+          onClick={() => runRef.current('inline', true)}
+        >
+          {requesting ? '思考中…' : '立即提词'}
+        </button>
+        <button
+          className="btn"
+          title="Cmd/Ctrl + Shift + J（用强模型续写较长一段）"
+          disabled={requesting || !strongConfigured}
+          onClick={() => runRef.current('continue', true)}
+        >
+          续写一段
+        </button>
+        <span className="muted text-[12px]">
+          {prefs.paused ? '自动提词已暂停' : `停顿 ${(prefs.idleMs / 1000).toFixed(1)} 秒自动提词`}
+        </span>
+        <span className="flex-1" />
+        <span className="muted text-[12px]">
+          {SUGGEST_LENGTH_LABELS[prefs.suggestLength]}
+        </span>
+      </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-6 py-8">
           <EditorContent editor={editor} />

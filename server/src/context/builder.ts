@@ -1,6 +1,6 @@
 import { fitBlocks, renderBlocks, type Block } from './budget.js'
 import { matchLore } from './lore-match.js'
-import { suggestSystemPrompt } from '../llm/prompts.js'
+import { suggestSystemPrompt, type SuggestLength } from '../llm/prompts.js'
 import type { ChatMessage } from '../llm/client.js'
 
 export type SuggestMode = 'inline' | 'continue'
@@ -40,6 +40,8 @@ export interface BuildInput {
   /** 光标后文本（调用方已截取） */
   suffix: string
   mode: SuggestMode
+  /** 期望的续写长度 */
+  length?: SuggestLength
 }
 
 export interface BuildResult {
@@ -147,7 +149,7 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
   const user = renderBlocks(fitted)
 
   const messages: ChatMessage[] = [
-    { role: 'system', content: suggestSystemPrompt(input.mode) },
+    { role: 'system', content: suggestSystemPrompt(input.mode, input.length ?? 'medium') },
     { role: 'user', content: user },
   ]
 

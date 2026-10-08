@@ -1,25 +1,29 @@
 import type { ChatMessage } from './client.js'
 
-/** 实时提词（fast 模型） */
-export const SUGGEST_SYSTEM_INLINE = `你是一位小说写作助手，负责在作者停顿时给出接下来的一小段文字提示。
+export type SuggestLength = 'short' | 'medium' | 'long'
+
+const INLINE_LENGTH: Record<SuggestLength, string> = {
+  short: '10～30 个汉字，最多一个短句',
+  medium: '15～60 个汉字，最多写到一句话或一个短句群结束',
+  long: '30～120 个汉字，可以写两三个短句',
+}
+
+const CONTINUE_LENGTH: Record<SuggestLength, string> = {
+  short: '100～200 个汉字',
+  medium: '200～500 个汉字，可以包含多个自然段',
+  long: '500～800 个汉字，可以包含多个自然段',
+}
+
+/** 实时提词 / 手动续写 的系统提示（长度可配置） */
+export function suggestSystemPrompt(mode: 'inline' | 'continue', length: SuggestLength = 'medium'): string {
+  const len = mode === 'inline' ? INLINE_LENGTH[length] : CONTINUE_LENGTH[length]
+  return `你是一位小说写作助手${mode === 'inline' ? '，负责在作者停顿时给出接下来的一小段文字提示' : '，负责在作者要求时续写接下来的一段正文'}。
 要求：
 1. 只输出紧接在【正文】末尾之后的续写内容，不重复已有文字，不加任何解释、引号或标题。
-2. 长度 15～60 个汉字，最多写到一句话或一个短句群结束。
+2. 长度 ${len}。
 3. 严格遵守设定与人物当前状态，不得与前情矛盾；不确定的信息不要编造新设定。
 4. 保持与正文一致的人称、时态、文风。
 5. 如果给出了【光标后文】，续写必须能自然衔接到它。`
-
-/** 手动续写一段（strong 模型） */
-export const SUGGEST_SYSTEM_CONTINUE = `你是一位小说写作助手，负责在作者要求时续写接下来的一段正文。
-要求：
-1. 只输出紧接在【正文】末尾之后的续写内容，不重复已有文字，不加任何解释、引号或标题。
-2. 长度 200～500 个汉字，可以包含多个自然段。
-3. 严格遵守设定与人物当前状态，不得与前情矛盾；不确定的信息不要编造新设定。
-4. 保持与正文一致的人称、时态、文风。
-5. 如果给出了【光标后文】，续写必须能自然衔接到它。`
-
-export function suggestSystemPrompt(mode: 'inline' | 'continue'): string {
-  return mode === 'inline' ? SUGGEST_SYSTEM_INLINE : SUGGEST_SYSTEM_CONTINUE
 }
 
 /** 章节摘要 */

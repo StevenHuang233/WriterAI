@@ -16,6 +16,7 @@ const SuggestSchema = z.object({
   prefix: z.string().max(6000),
   suffix: z.string().max(2000),
   mode: z.enum(['inline', 'continue']),
+  length: z.enum(['short', 'medium', 'long']).optional(),
 })
 
 const FeedbackSchema = z.object({
@@ -65,13 +66,17 @@ suggestRoute.post('/suggest', async (c) => {
     prefix: body.prefix,
     suffix: body.suffix,
     mode: body.mode,
+    length: body.length ?? 'medium',
   })
 
-  // inline 给 600 tokens：推理模型的思考 token 会占用输出预算
+  // 推理模型的思考 token 会占用输出预算，因此按期望长度给不同的 max_tokens
+  const length = body.length ?? 'medium'
+  const inlineTokens = { short: 400, medium: 600, long: 900 } as const
+  const continueTokens = { short: 1000, medium: 2000, long: 3000 } as const
   const chatOpts =
     body.mode === 'inline'
-      ? { temperature: 0.8, maxTokens: 600, stop: ['\n\n'] as string[] }
-      : { temperature: 0.8, maxTokens: 2000 }
+      ? { temperature: 0.8, maxTokens: inlineTokens[length], stop: ['\n\n'] as string[] }
+      : { temperature: 0.8, maxTokens: continueTokens[length] }
 
   return streamSSE(c, async (stream) => {
     // 注意：不能把 AbortSignal 传给 openai SDK（在 streamSSE 回调内会导致流静默为空），

@@ -1,4 +1,7 @@
-import type { Chapter, JobInfo, LoreEntry, ProjectDetail, ProjectMeta, SettingsInfo, SuggestMeta, SuggestMode } from '../types'
+import type {
+  Chapter, JobInfo, LoreEntry, ProjectDetail, ProjectMeta, SettingsInfo,
+  SuggestLength, SuggestMeta, SuggestMode,
+} from '../types'
 
 export class ApiError extends Error {
   constructor(
@@ -100,7 +103,14 @@ export interface SuggestStreamHandlers {
 
 /** POST /api/suggest 并解析 SSE 流 */
 export async function streamSuggest(
-  body: { projectId: string; chapterId: string; prefix: string; suffix: string; mode: SuggestMode },
+  body: {
+    projectId: string
+    chapterId: string
+    prefix: string
+    suffix: string
+    mode: SuggestMode
+    length?: SuggestLength
+  },
   handlers: SuggestStreamHandlers,
 ): Promise<void> {
   const res = await fetch('/api/suggest', {

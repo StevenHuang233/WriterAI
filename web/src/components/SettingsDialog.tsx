@@ -1,5 +1,8 @@
 import { useEffect } from 'react'
 import { useStore } from '../store/useStore'
+import { SUGGEST_LENGTH_LABELS, type SuggestLength } from '../types'
+
+const LENGTH_KEYS: SuggestLength[] = ['short', 'medium', 'long']
 
 interface Props {
   onClose: () => void
@@ -50,6 +53,24 @@ export default function SettingsDialog({ onClose }: Props) {
             className="w-full"
           />
           <div className="mt-1 text-[12px] muted">停止输入后等待多久给出提示。连续忽略提示会自动加长。</div>
+        </div>
+
+        <div className="mb-4">
+          <div className="mb-1 text-[13px]">提词长度</div>
+          <div className="flex gap-1">
+            {LENGTH_KEYS.map((k) => (
+              <button
+                key={k}
+                className={`btn flex-1 justify-center ${prefs.suggestLength === k ? 'btn-primary' : ''}`}
+                onClick={() => setPrefs({ suggestLength: k })}
+              >
+                {SUGGEST_LENGTH_LABELS[k]}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1 text-[12px] muted">
+            手动续写会按同样的档位放大（短 100～200 字 / 中 200～500 字 / 长 500～800 字）
+          </div>
         </div>
 
         <div className="mb-4 flex items-center justify-between">

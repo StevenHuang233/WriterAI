@@ -4,7 +4,10 @@ import {
   apiDeleteProject, apiGetProject, apiJobs, apiListProjects, apiPatchChapter, apiPatchLore,
   apiPatchProject, apiSettings,
 } from '../api/client'
-import type { Chapter, ChapterMeta, JobInfo, LoreEntry, LoreType, ProjectDetail, ProjectMeta, SettingsInfo } from '../types'
+import type {
+  Chapter, ChapterMeta, JobInfo, LoreEntry, LoreType, ProjectDetail, ProjectMeta,
+  SettingsInfo, SuggestLength,
+} from '../types'
 
 export type SaveState = 'saved' | 'saving' | 'dirty' | 'error'
 export type TriggerStateUi = 'idle' | 'waiting' | 'requesting' | 'showing' | 'paused'
@@ -13,6 +16,7 @@ export interface Prefs {
   idleMs: number
   paused: boolean
   theme: 'light' | 'dark'
+  suggestLength: SuggestLength
 }
 
 const PREFS_KEY = 'writerai-prefs'
@@ -25,9 +29,10 @@ function loadPrefs(): Prefs {
       idleMs: typeof v.idleMs === 'number' && v.idleMs >= 2000 && v.idleMs <= 10000 ? v.idleMs : 4000,
       paused: v.paused === true,
       theme: v.theme === 'dark' ? 'dark' : 'light',
+      suggestLength: v.suggestLength === 'short' || v.suggestLength === 'long' ? v.suggestLength : 'medium',
     }
   } catch {
-    return { idleMs: 4000, paused: false, theme: 'light' }
+    return { idleMs: 4000, paused: false, theme: 'light', suggestLength: 'medium' }
   }
 }
 
