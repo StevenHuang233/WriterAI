@@ -5,13 +5,18 @@ export default function StylePanel() {
   const project = useStore((s) => s.detail?.project ?? null)
   const updateProject = useStore((s) => s.updateProject)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRef = useRef<{ synopsis?: string; style_note?: string }>({})
 
   if (!project) return null
 
+  /** 合并待提交字段，避免连续编辑两个文本框时前一个被覆盖丢失 */
   function schedule(patch: { synopsis?: string; style_note?: string }) {
+    pendingRef.current = { ...pendingRef.current, ...patch }
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
-      void updateProject(patch)
+      const data = pendingRef.current
+      pendingRef.current = {}
+      void updateProject(data)
     }, 800)
   }
 

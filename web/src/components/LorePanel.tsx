@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { LORE_TYPE_LABELS, type LoreType } from '../types'
 
@@ -25,12 +25,27 @@ export default function LorePanel() {
     setNewName('')
   }
 
-  /** 字段级 debounce 保存 */
-  let saveTimer: ReturnType<typeof setTimeout> | undefined
+  /**
+   * 防抖保存。注意：合并待提交的字段，避免连续修改多个字段时
+   * 后一次的定时器清掉前一次，导致前面的修改丢失。
+   */
+  const pendingRef = useRef<Record<string, unknown>>({})
+  const pendingIdRef = useRef<string | null>(null)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   function patch(id: string, payload: Parameters<typeof updateLore>[1]) {
-    clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => {
-      void updateLore(id, payload)
+    if (pendingIdRef.current && pendingIdRef.current !== id) {
+      void updateLore(pendingIdRef.current, pendingRef.current)
+      pendingRef.current = {}
+    }
+    pendingIdRef.current = id
+    pendingRef.current = { ...pendingRef.current, ...payload }
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      const targetId = pendingIdRef.current
+      const data = pendingRef.current
+      pendingIdRef.current = null
+      pendingRef.current = {}
+      if (targetId) void updateLore(targetId, data)
     }, 600)
   }
 

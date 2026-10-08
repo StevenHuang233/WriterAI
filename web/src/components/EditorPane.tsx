@@ -81,6 +81,8 @@ export default function EditorPane() {
       const editor = editorRef.current
       const ch = st.activeChapter
       if (!editor || !ch || !st.detail) return
+      // 手动触发（点按钮）时把焦点还给编辑器
+      if (manual) editor.commands.focus()
       if (!manual) {
         if (!editor.isFocused) return
         if (document.visibilityState !== 'visible') return
@@ -234,7 +236,8 @@ export default function EditorPane() {
         triggerRef.current?.setFocus(false)
       },
     },
-    [chapter?.id],
+    // 章节切换由父组件的 key 重挂载处理，编辑器只创建一次
+    [],
   )
 
   editorRef.current = editor
@@ -365,6 +368,8 @@ export default function EditorPane() {
           className="btn"
           title="Cmd/Ctrl + J"
           disabled={requesting || !fastConfigured}
+          // 不让按钮抢走编辑器焦点，否则 Tab / Cmd+→ 无法接受提示
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => runRef.current('inline', true)}
         >
           {requesting ? '思考中…' : '立即提词'}
@@ -373,6 +378,7 @@ export default function EditorPane() {
           className="btn"
           title="Cmd/Ctrl + Shift + J（用强模型续写较长一段）"
           disabled={requesting || !strongConfigured}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => runRef.current('continue', true)}
         >
           续写一段

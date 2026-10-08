@@ -144,6 +144,7 @@ type RightTab = 'lore' | 'summary' | 'style'
 function EditorPage() {
   const project = useStore((s) => s.detail!.project)
   const closeProject = useStore((s) => s.closeProject)
+  const activeChapterId = useStore((s) => s.activeChapter?.id ?? null)
   const [tab, setTab] = useState<RightTab>('lore')
   const [showSettings, setShowSettings] = useState(false)
 
@@ -178,7 +179,8 @@ function EditorPage() {
         </aside>
 
         <main className="min-w-0 flex-1 p-4">
-          <EditorPane />
+          {/* 按章节 id 重挂载，确保编辑器内容与章节严格对应（避免残留上一章内容） */}
+          <EditorPane key={activeChapterId ?? 'none'} />
         </main>
 
         <aside className="w-80 shrink-0 p-3" style={{ borderLeft: '1px solid var(--border)' }}>
