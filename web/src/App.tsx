@@ -5,6 +5,11 @@ import LorePanel from './components/LorePanel'
 import StatusBar from './components/StatusBar'
 import StylePanel from './components/StylePanel'
 import SummaryPanel from './components/SummaryPanel'
+import OutlinePanel from './components/OutlinePanel'
+import StatsPanel from './components/StatsPanel'
+import SearchPanel from './components/SearchPanel'
+import HistoryPanel from './components/HistoryPanel'
+import ImportDialog from './components/ImportDialog'
 import SettingsDialog from './components/SettingsDialog'
 import { apiExportUrl } from './api/client'
 import { getLastProjectId, useStore } from './store/useStore'
@@ -139,7 +144,17 @@ function ProjectListPage() {
   )
 }
 
-type RightTab = 'lore' | 'summary' | 'style'
+type RightTab = 'lore' | 'outline' | 'summary' | 'style' | 'stats' | 'search' | 'history'
+
+const RIGHT_TABS: { id: RightTab; name: string }[] = [
+  { id: 'lore', name: '设定' },
+  { id: 'outline', name: '大纲' },
+  { id: 'summary', name: '前情' },
+  { id: 'style', name: '风格' },
+  { id: 'stats', name: '统计' },
+  { id: 'search', name: '搜索' },
+  { id: 'history', name: '历史' },
+]
 
 function EditorPage() {
   const project = useStore((s) => s.detail!.project)
@@ -147,6 +162,7 @@ function EditorPage() {
   const activeChapterId = useStore((s) => s.activeChapter?.id ?? null)
   const [tab, setTab] = useState<RightTab>('lore')
   const [showSettings, setShowSettings] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   return (
     <div className="flex h-full flex-col">
@@ -165,6 +181,9 @@ function EditorPage() {
         <a className="btn" href={apiExportUrl(project.id, 'md')} download>
           导出 md
         </a>
+        <button className="btn" onClick={() => setShowImport(true)} title="从 Markdown 或纯文本导入章节">
+          导入
+        </button>
         <button className="btn" onClick={() => setShowSettings(true)}>
           ⚙ 设置
         </button>
@@ -184,21 +203,21 @@ function EditorPage() {
         </main>
 
         <aside className="w-80 shrink-0 p-3" style={{ borderLeft: '1px solid var(--border)' }}>
-          <div className="mb-2 flex gap-1">
-            <span className={`tab ${tab === 'lore' ? 'active' : ''}`} onClick={() => setTab('lore')}>
-              设定
-            </span>
-            <span className={`tab ${tab === 'summary' ? 'active' : ''}`} onClick={() => setTab('summary')}>
-              前情
-            </span>
-            <span className={`tab ${tab === 'style' ? 'active' : ''}`} onClick={() => setTab('style')}>
-              风格
-            </span>
+          <div className="mb-2 flex flex-wrap gap-1">
+            {RIGHT_TABS.map((t) => (
+              <span key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
+                {t.name}
+              </span>
+            ))}
           </div>
           <div className="h-[calc(100%-36px)]">
             {tab === 'lore' && <LorePanel />}
+            {tab === 'outline' && <OutlinePanel />}
             {tab === 'summary' && <SummaryPanel />}
             {tab === 'style' && <StylePanel />}
+            {tab === 'stats' && <StatsPanel />}
+            {tab === 'search' && <SearchPanel />}
+            {tab === 'history' && <HistoryPanel />}
           </div>
         </aside>
       </div>
@@ -206,6 +225,7 @@ function EditorPage() {
       <StatusBar />
 
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showImport && <ImportDialog onClose={() => setShowImport(false)} />}
     </div>
   )
 }

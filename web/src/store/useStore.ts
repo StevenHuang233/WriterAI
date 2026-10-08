@@ -55,6 +55,7 @@ interface Store {
   lastLatencyMs: number | null
   lastSuggestError: string | null
   currentChapterChars: number
+  jumpTarget: JumpTarget | null
 
   init: () => Promise<void>
   setPrefs: (patch: Partial<Prefs>) => void
@@ -71,7 +72,9 @@ interface Store {
   moveChapter: (id: string, dir: -1 | 1) => Promise<void>
   saveChapterContent: (id: string, content: string) => Promise<void>
   setChapterSummary: (id: string, summary: string, locked?: boolean) => Promise<void>
+  updateChapterOutline: (id: string, outline: string) => Promise<void>
   setDraftChapterContent: (content: string) => void
+  setJumpTarget: (t: JumpTarget | null) => void
 
   updateProject: (patch: Partial<Pick<ProjectDetail['project'], 'title' | 'synopsis' | 'style_note' | 'global_summary'>>) => Promise<void>
 
@@ -81,6 +84,13 @@ interface Store {
 
   refreshJobs: () => Promise<void>
   setUi: (patch: Partial<Pick<Store, 'saveState' | 'triggerState' | 'usedLoreNames' | 'lastLatencyMs' | 'lastSuggestError' | 'currentChapterChars' | 'loadError'>>) => void
+}
+
+export interface JumpTarget {
+  chapterId: string
+  query: string
+  /** 第几个匹配（0 起） */
+  occurrence: number
 }
 
 function applyTheme(theme: 'light' | 'dark') {
@@ -102,6 +112,7 @@ export const useStore = create<Store>((set, get) => ({
   lastLatencyMs: null,
   lastSuggestError: null,
   currentChapterChars: 0,
+  jumpTarget: null,
 
   init: async () => {
     applyTheme(get().prefs.theme)
@@ -232,6 +243,18 @@ export const useStore = create<Store>((set, get) => ({
 
   setDraftChapterContent: (content) => {
     set({ currentChapterChars: content.length })
+  },
+
+  setJumpTarget: (t) => set({ jumpTarget: t }),
+
+  updateChapterOutline: async (id, outline) => {
+    const detail = get().detail
+    if (!detail) return
+    await apiPatchChapter(id, { outline })
+    const fresh = await apiGetProject(detail.project.id)
+    set({ detail: fresh })
+    const active = get().activeChapter
+    if (active?.id === id) set({ activeChapter: { ...active, outline } })
   },
 
   updateProject: async (patch) => {

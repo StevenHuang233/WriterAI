@@ -46,6 +46,7 @@ export const apiExportUrl = (id: string, format: 'txt' | 'md') => `/api/projects
 export interface ChapterPatch {
   title?: string
   content?: string
+  outline?: string
   summary?: string
   summary_locked?: boolean
   sort_order?: number
@@ -82,6 +83,53 @@ export const apiDeleteLore = (id: string) => api<{ ok: boolean }>(`/api/lore/${i
 
 export const apiSettings = () => api<SettingsInfo>('/api/settings')
 export const apiJobs = () => api<JobInfo[]>('/api/jobs')
+
+// ---------- 统计 / 历史 / 搜索 / 导入 ----------
+
+export interface StatsResult {
+  today: number
+  streak: number
+  daily: { day: string; chars: number }[]
+  chapters: { id: string; title: string; chars: number }[]
+  total: number
+}
+
+export interface SnapshotMeta {
+  id: string
+  chapter_id: string
+  label: string
+  length: number
+  created_at: number
+}
+
+export interface SearchMatch {
+  chapterId: string
+  title: string
+  index: number
+  preview: string
+}
+
+export const apiStats = (projectId: string, days = 30) => api<StatsResult>(`/api/projects/${projectId}/stats?days=${days}`)
+export const apiSnapshots = (chapterId: string) => api<SnapshotMeta[]>(`/api/chapters/${chapterId}/snapshots`)
+export const apiCreateSnapshot = (chapterId: string, label?: string) =>
+  api<{ ok: boolean; snapshots: SnapshotMeta[] }>(`/api/chapters/${chapterId}/snapshots`, {
+    method: 'POST',
+    body: JSON.stringify({ label }),
+  })
+export const apiRestoreSnapshot = (id: string) =>
+  api<{ ok: boolean; chapter: Chapter }>(`/api/snapshots/${id}/restore`, { method: 'POST' })
+export const apiSearch = (projectId: string, q: string) =>
+  api<{ query: string; matches: SearchMatch[]; total: number }>(`/api/projects/${projectId}/search?q=${encodeURIComponent(q)}`)
+export const apiReplace = (projectId: string, body: { query: string; replacement: string; chapterIds?: string[] }) =>
+  api<{ ok: boolean; chapters: number; replacements: number }>(`/api/projects/${projectId}/replace`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+export const apiImport = (projectId: string, body: { text: string; mode: 'md-heading' | 'chapter-regex' | 'single'; defaultTitle?: string }) =>
+  api<{ ok: boolean; chapters: number; titles: string[] }>(`/api/projects/${projectId}/import`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 
 // ---------- 云同步 ----------
 

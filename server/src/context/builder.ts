@@ -42,6 +42,8 @@ export interface BuildInput {
   mode: SuggestMode
   /** 期望的续写长度 */
   length?: SuggestLength
+  /** 当前章细纲（让续写朝大纲推进） */
+  outline?: string
 }
 
 export interface BuildResult {
@@ -54,11 +56,13 @@ export interface BuildResult {
 const INLINE = {
   synopsis: 300, alwaysOn: 800, global: 600, prevSummaries: 600,
   triggered: 1200, style: 300, suffix: 300, prefix: 1500, prevChapterCount: 2, triggerCount: 6,
+  outline: 300,
 }
 
 const CONTINUE = {
   synopsis: 800, alwaysOn: 2000, global: 1500, prevSummaries: 2000,
   triggered: 3000, style: 500, suffix: 500, prefix: 3000, prevChapterCount: 5, triggerCount: 10,
+  outline: 600,
 }
 
 function typeLabel(type: string): string {
@@ -127,6 +131,7 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
     { key: 'global', title: '全书梗概', text: input.project.globalSummary.trim(), trimOrder: 2, flex: true },
     { key: 'prev', title: '前情摘要', text: summaryParts.join('\n'), trimOrder: 1, flex: true },
     { key: 'triggered', title: '相关设定', text: triggered.map(loreText).join('\n'), trimOrder: 5, flex: true },
+    { key: 'outline', title: '本章大纲', text: input.outline?.trim() ?? '', trimOrder: 6, flex: true },
     { key: 'style', title: '风格要求', text: input.project.styleNote.trim(), trimOrder: 99, flex: false },
     {
       key: 'suffix',
@@ -144,7 +149,8 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
     },
   ]
 
-  const budget = B.synopsis + B.alwaysOn + B.global + B.prevSummaries + B.triggered + B.style + B.suffix + B.prefix
+  const budget =
+    B.synopsis + B.alwaysOn + B.global + B.prevSummaries + B.triggered + B.outline + B.style + B.suffix + B.prefix
   const fitted = fitBlocks(blocks, budget)
   const user = renderBlocks(fitted)
 

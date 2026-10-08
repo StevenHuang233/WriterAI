@@ -15,11 +15,15 @@ export interface Project {
   updated_at: number
 }
 
+export type ImportMode = 'md-heading' | 'chapter-regex' | 'single'
+
 export interface ChapterMeta {
   id: string
   project_id: string
   sort_order: number
   title: string
+  /** 章节细纲 */
+  outline: string
   summary: string
   summary_locked: 0 | 1
   summarized_len: number

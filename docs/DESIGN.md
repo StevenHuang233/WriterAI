@@ -466,7 +466,19 @@ git push -u origin main
 
 ---
 
-## 13. 云端存储（已实现）
+## 13. 写作辅助功能（已实现）
+
+- **写作统计**：`writing_stats(project_id, chapter_id, day, delta)`；章节保存时按字数差记录增量，
+  `GET /api/projects/:id/stats` 返回今日字数、连续天数（当天未写则从昨天算起）、近 N 天、各章字数
+- **版本历史**：`chapter_snapshots`。自动策略：无版本时存初始版；之后「距上个版本 ≥5 分钟」或
+  「字数差 ≥500」存一版；每章最多 30 个。恢复前先给当前内容存一版，避免二次丢失。
+  替换 / 同步导入等破坏性操作前也会自动存版
+- **搜索替换**：`server/src/services/search.ts`，纯 `indexOf`（不用正则，避免 ReDoS），
+  每章最多返回 200 条匹配；替换支持限定章节范围
+- **章节大纲**：`chapters.outline`，在上下文中作为【本章大纲】块（预算 inline 300 / continue 600，最后才被裁剪）
+- **导入**：`server/src/services/import.ts`，三种模式（Markdown 标题 / `第X章` 正则 / 整篇一章），导入只新建章节不覆盖
+
+## 14. 云端存储（已实现）
 
 - **快照式同步**：本地全部数据导出为单个 JSON 快照（`writerai-sync.json`），推送到云端；恢复时整体导入。比逐条同步简单可靠，且适用于任何能存文件的存储
 - **适配器**：`server/src/sync/providers.ts` 定义统一接口 `put / get / test`
@@ -480,7 +492,7 @@ git push -u origin main
 - **自动备份**：`server/src/jobs/autoSync.ts`，正文保存时 `markDirty()`，每分钟检查，满足间隔且脏时推送
 - **注意**：项目列表页也必须能打开设置，否则数据全部丢失后无法进入界面执行恢复
 
-## 14. 后续可扩展（不在 MVP 内）
+## 15. 后续可扩展（不在 MVP 内）
 - 向量检索：设定条目、历史段落 embedding，补充关键词触发漏掉的内容。
 - 多候选：一次生成 3 个候选，`Alt+]` 切换。
 - 大纲模式：章节大纲作为上下文块，续写朝大纲目标推进。

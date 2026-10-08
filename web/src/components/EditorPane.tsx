@@ -282,6 +282,27 @@ export default function EditorPane() {
     }
   }
 
+  // 搜索结果跳转：切到目标章节后选中并滚动到匹配处
+  useEffect(() => {
+    const target = useStore.getState().jumpTarget
+    const editorInstance = editorRef.current
+    if (!target || !editorInstance) return
+    if (target.chapterId !== chapter?.id) return
+
+    const text = docToText(editorInstance)
+    let from = -1
+    for (let i = 0; i <= target.occurrence; i++) {
+      from = text.indexOf(target.query, from < 0 ? 0 : from + 1)
+      if (from < 0) break
+    }
+    useStore.getState().setJumpTarget(null)
+    if (from < 0) return
+    editorInstance.commands.focus()
+    editorInstance.commands.setTextSelection({ from: from + 1, to: from + 1 + target.query.length })
+    const dom = editorInstance.view.domAtPos(from + 1)?.node
+    if (dom instanceof HTMLElement) dom.scrollIntoView({ block: 'center' })
+  }, [chapter?.id])
+
   // 章节切换/卸载时：flush 保存 + 条件摘要
   useEffect(() => {
     if (!chapter) return

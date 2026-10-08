@@ -38,6 +38,25 @@ CREATE TABLE IF NOT EXISTS lore_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_lore_project ON lore_entries(project_id);
 
+CREATE TABLE IF NOT EXISTS chapter_snapshots (
+  id TEXT PRIMARY KEY,
+  chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_chapter ON chapter_snapshots(chapter_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS writing_stats (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  chapter_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  delta INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stats_project_day ON writing_stats(project_id, day);
+
 CREATE TABLE IF NOT EXISTS suggestion_logs (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,

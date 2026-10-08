@@ -17,11 +17,30 @@ export interface ChapterRow {
   sort_order: number
   title: string
   content: string
+  /** 章节细纲 */
+  outline: string
   summary: string
   summary_locked: 0 | 1
   summarized_len: number
   created_at: number
   updated_at: number
+}
+
+export interface SnapshotRow {
+  id: string
+  chapter_id: string
+  content: string
+  label: string
+  created_at: number
+}
+
+export interface StatRow {
+  id: string
+  project_id: string
+  chapter_id: string
+  day: string
+  delta: number
+  created_at: number
 }
 
 export type ChapterMetaRow = Omit<ChapterRow, 'content'> & { content_length: number }
@@ -53,7 +72,7 @@ const stmt = {
   touchProject: db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?'),
 
   listChapterMetas: db.prepare<[string], ChapterMetaRow>(
-    `SELECT id, project_id, sort_order, title, summary, summary_locked, summarized_len,
+    `SELECT id, project_id, sort_order, title, outline, summary, summary_locked, summarized_len,
             created_at, updated_at, length(content) AS content_length
      FROM chapters WHERE project_id = ? ORDER BY sort_order, created_at`,
   ),
@@ -62,7 +81,7 @@ const stmt = {
   ),
   getChapter: db.prepare<[string], ChapterRow>('SELECT * FROM chapters WHERE id = ?'),
   insertChapter: db.prepare(
-    'INSERT INTO chapters (id, project_id, sort_order, title, content, summary, summary_locked, summarized_len, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO chapters (id, project_id, sort_order, title, content, outline, summary, summary_locked, summarized_len, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   ),
   deleteChapter: db.prepare('DELETE FROM chapters WHERE id = ?'),
   maxSortOrder: db.prepare<[string], { m: number }>(
@@ -81,6 +100,24 @@ const stmt = {
 
   insertSuggestionLog: db.prepare(
     'INSERT INTO suggestion_logs (id, project_id, chapter_id, outcome, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ),
+
+  insertSnapshot: db.prepare(
+    'INSERT INTO chapter_snapshots (id, chapter_id, content, label, created_at) VALUES (?, ?, ?, ?, ?)',
+  ),
+  listSnapshots: db.prepare<[string], SnapshotMeta>(
+    'SELECT id, chapter_id, label, length(content) AS length, created_at FROM chapter_snapshots WHERE chapter_id = ? ORDER BY created_at DESC',
+  ),
+  getSnapshot: db.prepare<[string], SnapshotRow>('SELECT * FROM chapter_snapshots WHERE id = ?'),
+  deleteSnapshot: db.prepare('DELETE FROM chapter_snapshots WHERE id = ?'),
+  snapshotIds: db.prepare<[string], { id: string }>(
+    'SELECT id FROM chapter_snapshots WHERE chapter_id = ? ORDER BY created_at DESC',
+  ),
+  insertStat: db.prepare(
+    'INSERT INTO writing_stats (id, project_id, chapter_id, day, delta, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ),
+  statsByDay: db.prepare<[string], { day: string; chars: number }>(
+    'SELECT day, SUM(delta) AS chars FROM writing_stats WHERE project_id = ? GROUP BY day ORDER BY day',
   ),
 }
 
@@ -165,6 +202,7 @@ export function createChapter(projectId: string, title: string): ChapterRow {
     sort_order: (stmt.maxSortOrder.get(projectId)?.m ?? 0) + 1,
     title,
     content: '',
+    outline: '',
     summary: '',
     summary_locked: 0,
     summarized_len: 0,
@@ -172,18 +210,19 @@ export function createChapter(projectId: string, title: string): ChapterRow {
     updated_at: t,
   }
   stmt.insertChapter.run(
-    ch.id, ch.project_id, ch.sort_order, ch.title, ch.content, ch.summary,
+    ch.id, ch.project_id, ch.sort_order, ch.title, ch.content, ch.outline, ch.summary,
     ch.summary_locked, ch.summarized_len, ch.created_at, ch.updated_at,
   )
   stmt.touchProject.run(t, projectId)
   return ch
 }
 
-const CHAPTER_PATCH_FIELDS = ['title', 'content', 'summary', 'summary_locked', 'sort_order', 'summarized_len'] as const
+const CHAPTER_PATCH_FIELDS = ['title', 'content', 'outline', 'summary', 'summary_locked', 'sort_order', 'summarized_len'] as const
 
 export interface ChapterPatch {
   title?: string
   content?: string
+  outline?: string
   summary?: string
   summary_locked?: 0 | 1
   sort_order?: number
@@ -305,6 +344,96 @@ export function deleteLore(id: string): void {
 
 export function logSuggestion(projectId: string, chapterId: string, outcome: 'accepted' | 'partial' | 'dismissed', latencyMs?: number): void {
   stmt.insertSuggestionLog.run(randomUUID(), projectId, chapterId, outcome, latencyMs ?? null, now())
+}
+
+// ---------- 版本历史 ----------
+
+const MAX_SNAPSHOTS_PER_CHAPTER = 30
+
+export interface SnapshotMeta {
+  id: string
+  chapter_id: string
+  label: string
+  length: number
+  created_at: number
+}
+
+export function createSnapshot(chapterId: string, content: string, label = ''): SnapshotRow {
+  const row: SnapshotRow = { id: randomUUID(), chapter_id: chapterId, content, label, created_at: now() }
+  stmt.insertSnapshot.run(row.id, row.chapter_id, row.content, row.label, row.created_at)
+  pruneSnapshots(chapterId)
+  return row
+}
+
+export function listSnapshots(chapterId: string): SnapshotMeta[] {
+  return stmt.listSnapshots.all(chapterId)
+}
+
+export function getSnapshot(id: string): SnapshotRow | undefined {
+  return stmt.getSnapshot.get(id)
+}
+
+export function deleteSnapshot(id: string): void {
+  stmt.deleteSnapshot.run(id)
+}
+
+export function pruneSnapshots(chapterId: string): void {
+  const all = stmt.snapshotIds.all(chapterId)
+  for (const row of all.slice(MAX_SNAPSHOTS_PER_CHAPTER)) {
+    stmt.deleteSnapshot.run(row.id)
+  }
+}
+
+// ---------- 写作统计 ----------
+
+export function todayString(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+export function recordStat(projectId: string, chapterId: string, delta: number): void {
+  if (delta === 0) return
+  stmt.insertStat.run(randomUUID(), projectId, chapterId, todayString(), delta, now())
+}
+
+export interface DayStat {
+  day: string
+  chars: number
+}
+
+export function listStats(projectId: string, days: number): DayStat[] {
+  const rows = stmt.statsByDay.all(projectId)
+  const map = new Map(rows.map((r) => [r.day, r.chars]))
+  const out: DayStat[] = []
+  const d = new Date()
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate() - i)
+    const p = (n: number) => String(n).padStart(2, '0')
+    const key = `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}`
+    out.push({ day: key, chars: map.get(key) ?? 0 })
+  }
+  return out
+}
+
+/** 连续写作天数（当天没写则从昨天往前算） */
+export function writingStreak(projectId: string): number {
+  const map = new Map(stmt.statsByDay.all(projectId).map((r) => [r.day, r.chars]))
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  const key = (offset: number) => {
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset)
+    return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}`
+  }
+  let streak = 0
+  let offset = (map.get(key(0)) ?? 0) > 0 ? 0 : 1
+  for (let i = 0; i < 3650; i++) {
+    if ((map.get(key(offset)) ?? 0) > 0) {
+      streak++
+      offset++
+    } else break
+  }
+  return streak
 }
 
 // ---------- 云同步：快照导入导出 ----------

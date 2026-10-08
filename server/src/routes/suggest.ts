@@ -67,6 +67,7 @@ suggestRoute.post('/suggest', async (c) => {
     suffix: body.suffix,
     mode: body.mode,
     length: body.length ?? 'medium',
+    outline: chapter.outline,
   })
 
   // 推理模型的思考 token 会占用输出预算，因此按期望长度给不同的 max_tokens
