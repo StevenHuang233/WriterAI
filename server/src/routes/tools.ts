@@ -71,20 +71,28 @@ toolsRoute.post('/projects/:id/analyze-style', async (c) => {
     badRequest(`正文太少（当前 ${totalChars} 字），至少需要 ${STYLE_MIN_CHARS} 字才能总结文风`)
   }
 
+  // 样本较长时模型需要更多预算（实测 1500 会思考耗尽返回空）
   const raw = await chatOnceRobust('strong', analyzeStylePrompt(sample), {
-    maxTokens: 1500,
+    maxTokens: 3000,
     temperature: 0.3,
     effort: env.strong.effort || undefined,
   })
-  const parsed = StyleProfileSchema.safeParse(extractJson(raw) ?? {})
-  if (!parsed.success) badRequest('模型没有返回可解析的文风结果，请稍后再试')
-
-  const profile = parsed.data
+  // 文风分析为纯文本输出；若模型返回 JSON 也能兼容
+  // 注意：extractJson 对纯文本返回 null，此时不能拿 {} 去校验（空对象会通过校验并覆盖真实内容）
+  const json = extractJson(raw)
+  const parsed = json ? StyleProfileSchema.safeParse(json) : null
+  const hasProfileContent = (p: z.infer<typeof StyleProfileSchema>) =>
+    p.note.trim().length > 0 ||
+    ['perspective', 'sentence', 'wording', 'dialogue', 'rhetoric', 'avoid'].some((k) => (p[k as keyof typeof p] as string)?.trim())
+  const profile =
+    parsed?.success && hasProfileContent(parsed.data)
+      ? parsed.data
+      : { perspective: '', sentence: '', wording: '', dialogue: '', rhetoric: '', avoid: '', note: raw.trim() }
   const note0 = profile.note.trim()
   const hasFields = ['perspective', 'sentence', 'wording', 'dialogue', 'rhetoric', 'avoid'].some(
     (k) => (profile[k as keyof typeof profile] as string)?.trim(),
   )
-  if (!note0 && !hasFields) badRequest('模型没有返回可用的文风结果，请稍后重试')
+  if (!note0 && !hasFields && !raw.trim()) badRequest('模型没有返回可用的文风结果，请稍后重试')
 
   const note =
     profile.note.trim() ||

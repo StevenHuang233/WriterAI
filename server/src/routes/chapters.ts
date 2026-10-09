@@ -38,6 +38,8 @@ const PatchSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   content: z.string().max(200_000).optional(),
   outline: z.string().max(10_000).optional(),
+  summary_brief: z.string().max(500).optional(),
+  summary_micro: z.string().max(300).optional(),
   summary: z.string().max(5000).optional(),
   summary_locked: z.boolean().optional(),
   sort_order: z.number().int().min(1).max(10000).optional(),
@@ -67,6 +69,8 @@ chaptersRoute.patch('/chapters/:id', async (c) => {
   if (body.title !== undefined) patch.title = body.title
   if (body.content !== undefined) patch.content = body.content
   if (body.outline !== undefined) patch.outline = body.outline
+  if (body.summary_brief !== undefined) patch.summary_brief = body.summary_brief
+  if (body.summary_micro !== undefined) patch.summary_micro = body.summary_micro
   if (body.summary !== undefined) patch.summary = body.summary
   if (body.summary_locked !== undefined) patch.summary_locked = body.summary_locked ? 1 : 0
   if (body.sort_order !== undefined) patch.sort_order = body.sort_order

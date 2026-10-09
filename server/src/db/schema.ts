@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS chapters (
   title TEXT NOT NULL,
   content TEXT NOT NULL DEFAULT '',
   summary TEXT NOT NULL DEFAULT '',
+  summary_brief TEXT NOT NULL DEFAULT '',
+  summary_micro TEXT NOT NULL DEFAULT '',
   summary_locked INTEGER NOT NULL DEFAULT 0,
   summarized_len INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
@@ -39,6 +41,14 @@ CREATE TABLE IF NOT EXISTS lore_entries (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_lore_project ON lore_entries(project_id);
+
+CREATE TABLE IF NOT EXISTS project_context_settings (
+  project_id TEXT PRIMARY KEY,
+  disabled_blocks TEXT NOT NULL DEFAULT '[]',
+  excluded_chapters TEXT NOT NULL DEFAULT '[]',
+  pinned_chapters TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS character_profiles (
   lore_id TEXT PRIMARY KEY REFERENCES lore_entries(id) ON DELETE CASCADE,

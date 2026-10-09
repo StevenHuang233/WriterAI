@@ -1,5 +1,12 @@
 import { z } from 'zod'
 import { env } from '../env.js'
+import { parseMultiLevel } from '../services/summary.js'
+
+const MultiLevelSummarySchema = z.object({
+  summary: z.string().max(5000),
+  brief: z.string().max(500).optional().default(''),
+  micro: z.string().max(300).optional().default(''),
+})
 import { chatOnceRobust, extractJson } from '../llm/client.js'
 import {
   characterStatePrompt, chapterSummaryPrompt, incrementalChapterSummaryPrompt,
@@ -82,6 +89,8 @@ async function runJob(chapterId: string): Promise<void> {
 
     // 1. 章节摘要（锁定则跳过，但仍参与梗概与人物状态更新）
     let summary = ch.summary
+    let brief = ch.summary_brief
+    let micro = ch.summary_micro
     let summaryUpdated = false
     if (!ch.summary_locked && ch.content.trim().length >= 100) {
       // 已有摘要且只是续写：只把新增部分发给模型，省 token 也更快
@@ -93,19 +102,33 @@ async function runJob(chapterId: string): Promise<void> {
       const messages = canIncremental
         ? incrementalChapterSummaryPrompt(ch.summary, newPart)
         : chapterSummaryPrompt(ch.content)
-      const s = await chatOnceRobust('strong', messages, {
-        maxTokens: 2000,
+      const raw = await chatOnceRobust('strong', messages, {
+        maxTokens: 2500,
         temperature: 0.3,
         effort: env.strong.effort || undefined,
       })
-      if (s) {
-        summary = s
+      // 优先按标记行解析；若模型返回的是 JSON，再尝试解析 JSON
+      const marked = parseMultiLevel(raw)
+      if (marked && marked.summary.trim()) {
+        summary = marked.summary
+        brief = marked.brief || summary.slice(0, 60)
+        micro = marked.micro || brief.slice(0, 20)
         summaryUpdated = true
+      } else {
+        const parsed = MultiLevelSummarySchema.safeParse(extractJson(raw) ?? {})
+        if (parsed.success && parsed.data.summary.trim()) {
+          summary = parsed.data.summary.trim()
+          brief = parsed.data.brief.trim() || summary.slice(0, 60)
+          micro = parsed.data.micro.trim() || brief.slice(0, 20)
+          summaryUpdated = true
+        }
       }
     }
     if (summaryUpdated || ch.summary_locked) {
       updateChapter(chapterId, {
         summary,
+        summary_brief: brief,
+        summary_micro: micro,
         summarized_len: ch.content.length,
       })
     }

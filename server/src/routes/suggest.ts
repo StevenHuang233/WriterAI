@@ -5,7 +5,8 @@ import { env, llmReady } from '../env.js'
 import { createChatStream } from '../llm/client.js'
 import { buildSuggestMessages } from '../context/builder.js'
 import {
-  getChapter, getProject, listChapterMetas, listLore, listRelationsFor, logSuggestion,
+  getChapter, getContextSettings, getProject, listChapterMetas, listLore,
+  listRelationsFor, logSuggestion,
 } from '../db/repo.js'
 import { safeParseAliases } from './lore.js'
 import { notFound, parseBody } from './util.js'
@@ -70,7 +71,14 @@ suggestRoute.post('/suggest', async (c) => {
       styleNote: project.style_note,
       styleProfile: project.style_profile,
     },
-    chapters: chapters.map((ch) => ({ id: ch.id, title: ch.title, summary: ch.summary })),
+    chapters: chapters.map((ch) => ({
+      id: ch.id,
+      title: ch.title,
+      summary: ch.summary,
+      summaryBrief: ch.summary_brief,
+      summaryMicro: ch.summary_micro,
+      sortOrder: ch.sort_order,
+    })),
     currentChapterId: body.chapterId,
     lore: lore
       .filter((l) => !!l.enabled)
@@ -90,6 +98,7 @@ suggestRoute.post('/suggest', async (c) => {
     mode: body.mode,
     length: body.length ?? 'medium',
     outline: chapter.outline,
+    contextSettings: getContextSettings(body.projectId),
   }
 
   // 先构建一次拿到本次出场人物，再把他们的关系加入上下文重建
@@ -122,6 +131,8 @@ suggestRoute.post('/suggest', async (c) => {
       data: JSON.stringify({
         usedLoreNames: built.usedLoreNames,
         contextChars: built.totalChars,
+        blocks: built.blocks,
+        chain: built.chain,
         model: env[kind].model,
       }),
     })

@@ -7,6 +7,7 @@ import StylePanel from './components/StylePanel'
 import SummaryPanel from './components/SummaryPanel'
 import CharacterPanel from './components/CharacterPanel'
 import OutlinePanel from './components/OutlinePanel'
+import ContextPanel from './components/ContextPanel'
 import StatsPanel from './components/StatsPanel'
 import SearchPanel from './components/SearchPanel'
 import HistoryPanel from './components/HistoryPanel'
@@ -91,7 +92,9 @@ function ProjectListPage() {
           ⚙ 设置
         </button>
       </div>
-    <div className="mx-auto flex min-h-0 flex-1 w-full max-w-[640px] flex-col justify-center px-6">
+    {/* 可滚动容器：项目多时列表能滚动，新建项目的入口也不会被挤出视口 */}
+    <div className="min-h-0 flex-1 overflow-y-auto">
+     <div className="mx-auto w-full max-w-[640px] px-6 py-6">
       <h1 className="mb-1 text-[28px] font-bold">WriterAI 小说提词器</h1>
       <p className="muted mb-6 text-[13px]">
         停顿片刻，AI 结合设定与前情，在光标处给出灰色提示。Tab 接受，Esc 忽略。
@@ -140,18 +143,20 @@ function ProjectListPage() {
         ))}
         {projects.length === 0 && <div className="muted text-center text-[13px]">还没有项目，先创建一个吧（也可在设置里从云端恢复）</div>}
       </div>
+     </div>
     </div>
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
     </div>
   )
 }
 
-type RightTab = 'character' | 'lore' | 'outline' | 'summary' | 'style' | 'stats' | 'search' | 'history'
+type RightTab = 'character' | 'lore' | 'outline' | 'context' | 'summary' | 'style' | 'stats' | 'search' | 'history'
 
 const RIGHT_TABS: { id: RightTab; name: string }[] = [
   { id: 'character', name: '人物' },
   { id: 'lore', name: '设定' },
   { id: 'outline', name: '大纲' },
+  { id: 'context', name: '上下文' },
   { id: 'summary', name: '前情' },
   { id: 'style', name: '风格' },
   { id: 'stats', name: '统计' },
@@ -274,6 +279,7 @@ function EditorPage() {
             {tab === 'character' && <CharacterPanel />}
             {tab === 'lore' && <LorePanel />}
             {tab === 'outline' && <OutlinePanel />}
+            {tab === 'context' && <ContextPanel />}
             {tab === 'summary' && <SummaryPanel />}
             {tab === 'style' && <StylePanel />}
             {tab === 'stats' && <StatsPanel />}

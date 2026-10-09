@@ -31,7 +31,7 @@ describe('buildSuggestMessages', () => {
     const user = r.messages[1]!.content
     expect(user).toContain('【故事简介】')
     expect(user).toContain('【全书梗概】')
-    expect(user).toContain('【前情摘要】')
+    expect(user).toContain('【前情链条')
     expect(user).toContain('【正文】')
   })
 

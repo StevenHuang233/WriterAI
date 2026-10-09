@@ -486,7 +486,24 @@ git push -u origin main
 - 退出时 kill 后端；窗口关闭即退出
 - 脚本：根 `npm run app`（构建 + 启动），`app/` 内 `npm run dist|dmg`（electron-builder）
 
-## 14. 写作辅助功能（已实现）
+## 14. 前情分层压缩与上下文链条（已实现）
+
+- 章节存三层摘要：`summary`（完整）/ `summary_brief`（一句话）/ `summary_micro`（极简）。
+  生成时用**标记行**输出（`【完整】/【一句话】/【极简】`）而非 JSON——实测该模型被要求
+  输出 JSON 时会把 token 消耗在思考上导致返回空（`services/summary.ts` 解析，含退化处理）
+- `buildHistoryChain()`：由近及远填充，档位规则 `DEFAULT_TIER_RULES`；
+  固定章节优先并用完整摘要；预算不足时远处先被挤掉；输出按时间顺序（远→近）
+- 用户选择存 `project_context_settings`（disabled_blocks / excluded_chapters / pinned_chapters），
+  在 `buildSuggestMessages` 中过滤块与链条
+- 接口：`GET/PUT /api/projects/:id/context-settings`、`GET /api/projects/:id/context-preview`（不调模型，仅算链条）、`GET /api/chapters/:id/summaries`
+- `meta` 事件新增 `blocks`（各块字数）与 `chain`（链条明细），界面据此显示
+- 注意事项（均实测踩过）：
+  - 列表接口必须返回 summary_brief/micro，否则分层不生效
+  - 章节 PATCH 的 zod 白名单必须包含这两个字段，否则写入被静默丢弃
+  - 填充顺序必须由近及远，否则预算被最远章节占满
+  - 项目列表容器需要 overflow-y-auto，否则项目多了会溢出、新建按钮点不到
+
+## 15. 写作辅助功能（已实现）
 
 - **写作统计**：`writing_stats(project_id, chapter_id, day, delta)`；章节保存时按字数差记录增量，
   `GET /api/projects/:id/stats` 返回今日字数、连续天数（当天未写则从昨天算起）、近 N 天、各章字数

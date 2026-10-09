@@ -13,6 +13,7 @@ import { settingsRoute } from './routes/settings.js'
 import { syncRoute } from './routes/sync.js'
 import { toolsRoute } from './routes/tools.js'
 import { charactersRoute } from './routes/characters.js'
+import { contextRoute } from './routes/context.js'
 import { startAutoSync } from './jobs/autoSync.js'
 
 const app = new Hono()
@@ -34,6 +35,7 @@ api.route('/', settingsRoute)
 api.route('/', syncRoute)
 api.route('/', toolsRoute)
 api.route('/', charactersRoute)
+api.route('/', contextRoute)
 app.route('/api', api)
 
 startAutoSync()

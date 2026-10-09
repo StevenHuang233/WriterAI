@@ -110,6 +110,52 @@ export const apiListModels = (kind: 'fast' | 'strong') =>
   })
 export const apiJobs = () => api<JobInfo[]>('/api/jobs')
 
+// ---------- 上下文链条 ----------
+
+export interface ContextSettings {
+  disabledBlocks: string[]
+  excludedChapters: string[]
+  pinnedChapters: string[]
+}
+
+export interface ContextBlock {
+  key: string
+  label: string
+  chars: number
+  enabled: boolean
+}
+
+export interface ContextChainEntry {
+  chapterId: string
+  title: string
+  order: number
+  distance: number
+  tier: 'full' | 'brief' | 'micro'
+  text: string
+  chars: number
+  pinned: boolean
+  included: boolean
+  reason?: string
+}
+
+export const apiContextSettings = (projectId: string) =>
+  api<{ settings: ContextSettings }>(`/api/projects/${projectId}/context-settings`)
+export const apiSaveContextSettings = (projectId: string, patch: Partial<ContextSettings>) =>
+  api<{ settings: ContextSettings }>(`/api/projects/${projectId}/context-settings`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  })
+export const apiContextPreview = (projectId: string, chapterId?: string) =>
+  api<{
+    settings: ContextSettings
+    blocks: ContextBlock[]
+    chain: ContextChainEntry[]
+    totalChars: number
+    activeChapterId: string
+  }>(`/api/projects/${projectId}/context-preview${chapterId ? `?chapterId=${chapterId}` : ''}`)
+export const apiChapterSummaries = (chapterId: string) =>
+  api<{ summary: string; brief: string; micro: string; locked: boolean }>(`/api/chapters/${chapterId}/summaries`)
+
 // ---------- 人物模块 ----------
 
 export interface CharacterProfile {

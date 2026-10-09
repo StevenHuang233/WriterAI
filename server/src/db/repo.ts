@@ -24,6 +24,10 @@ export interface ChapterRow {
   /** 章节细纲 */
   outline: string
   summary: string
+  /** 一句话摘要（中等压缩） */
+  summary_brief: string
+  /** 极简摘要（高压缩） */
+  summary_micro: string
   summary_locked: 0 | 1
   summarized_len: number
   created_at: number
@@ -76,8 +80,8 @@ const stmt = {
   touchProject: db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?'),
 
   listChapterMetas: db.prepare<[string], ChapterMetaRow>(
-    `SELECT id, project_id, sort_order, title, outline, summary, summary_locked, summarized_len,
-            created_at, updated_at, length(content) AS content_length
+    `SELECT id, project_id, sort_order, title, outline, summary, summary_brief, summary_micro,
+            summary_locked, summarized_len, created_at, updated_at, length(content) AS content_length
      FROM chapters WHERE project_id = ? ORDER BY sort_order, created_at`,
   ),
   listChaptersFull: db.prepare<[string], ChapterRow>(
@@ -123,6 +127,22 @@ const stmt = {
   statsByDay: db.prepare<[string], { day: string; chars: number }>(
     'SELECT day, SUM(delta) AS chars FROM writing_stats WHERE project_id = ? GROUP BY day ORDER BY day',
   ),
+
+  getContextSettings: db.prepare<[string], {
+    project_id: string
+    disabled_blocks: string
+    excluded_chapters: string
+    pinned_chapters: string
+  }>('SELECT * FROM project_context_settings WHERE project_id = ?'),
+  upsertContextSettings: db.prepare(`
+    INSERT INTO project_context_settings (project_id, disabled_blocks, excluded_chapters, pinned_chapters, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(project_id) DO UPDATE SET
+      disabled_blocks = excluded.disabled_blocks,
+      excluded_chapters = excluded.excluded_chapters,
+      pinned_chapters = excluded.pinned_chapters,
+      updated_at = excluded.updated_at
+  `),
 
   getProfile: db.prepare<[string], CharacterProfileRow>('SELECT * FROM character_profiles WHERE lore_id = ?'),
   listProfiles: db.prepare<[string], CharacterProfileRow>(
@@ -238,6 +258,8 @@ export function createChapter(projectId: string, title: string): ChapterRow {
     content: '',
     outline: '',
     summary: '',
+    summary_brief: '',
+    summary_micro: '',
     summary_locked: 0,
     summarized_len: 0,
     created_at: t,
@@ -251,13 +273,18 @@ export function createChapter(projectId: string, title: string): ChapterRow {
   return ch
 }
 
-const CHAPTER_PATCH_FIELDS = ['title', 'content', 'outline', 'summary', 'summary_locked', 'sort_order', 'summarized_len'] as const
+const CHAPTER_PATCH_FIELDS = [
+  'title', 'content', 'outline', 'summary', 'summary_brief', 'summary_micro',
+  'summary_locked', 'sort_order', 'summarized_len',
+] as const
 
 export interface ChapterPatch {
   title?: string
   content?: string
   outline?: string
   summary?: string
+  summary_brief?: string
+  summary_micro?: string
   summary_locked?: 0 | 1
   sort_order?: number
   summarized_len?: number
@@ -378,6 +405,52 @@ export function deleteLore(id: string): void {
 
 export function logSuggestion(projectId: string, chapterId: string, outcome: 'accepted' | 'partial' | 'dismissed', latencyMs?: number): void {
   stmt.insertSuggestionLog.run(randomUUID(), projectId, chapterId, outcome, latencyMs ?? null, now())
+}
+
+// ---------- 上下文设置（用户手动挑选） ----------
+
+export interface ContextSettings {
+  disabledBlocks: string[]
+  excludedChapters: string[]
+  pinnedChapters: string[]
+}
+
+function parseList(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function getContextSettings(projectId: string): ContextSettings {
+  const row = stmt.getContextSettings.get(projectId) as
+    | { project_id: string; disabled_blocks: string; excluded_chapters: string; pinned_chapters: string }
+    | undefined
+  if (!row) return { disabledBlocks: [], excludedChapters: [], pinnedChapters: [] }
+  return {
+    disabledBlocks: parseList(row.disabled_blocks),
+    excludedChapters: parseList(row.excluded_chapters),
+    pinnedChapters: parseList(row.pinned_chapters),
+  }
+}
+
+export function saveContextSettings(projectId: string, patch: Partial<ContextSettings>): ContextSettings {
+  const cur = getContextSettings(projectId)
+  const next: ContextSettings = {
+    disabledBlocks: patch.disabledBlocks ?? cur.disabledBlocks,
+    excludedChapters: patch.excludedChapters ?? cur.excludedChapters,
+    pinnedChapters: patch.pinnedChapters ?? cur.pinnedChapters,
+  }
+  stmt.upsertContextSettings.run(
+    projectId,
+    JSON.stringify(next.disabledBlocks),
+    JSON.stringify(next.excludedChapters),
+    JSON.stringify(next.pinnedChapters),
+    now(),
+  )
+  return next
 }
 
 // ---------- 人物模块 ----------

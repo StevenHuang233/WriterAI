@@ -25,3 +25,11 @@ if (!projectCols.some((c) => c.name === 'style_profile')) {
 if (!projectCols.some((c) => c.name === 'style_profile_at')) {
   db.exec('ALTER TABLE projects ADD COLUMN style_profile_at INTEGER NOT NULL DEFAULT 0')
 }
+
+// 分层压缩：章节的“一句话摘要”与“极简摘要”
+if (!chapterCols.some((c) => c.name === 'summary_brief')) {
+  db.exec("ALTER TABLE chapters ADD COLUMN summary_brief TEXT NOT NULL DEFAULT ''")
+}
+if (!chapterCols.some((c) => c.name === 'summary_micro')) {
+  db.exec("ALTER TABLE chapters ADD COLUMN summary_micro TEXT NOT NULL DEFAULT ''")
+}

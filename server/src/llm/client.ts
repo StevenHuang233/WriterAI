@@ -83,15 +83,14 @@ export async function chatOnce(kind: LLMKind, messages: ChatMessage[], opts: Cha
 export async function chatOnceRobust(kind: LLMKind, messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
   let result = ''
   for (let attempt = 0; attempt < 3 && !result.trim(); attempt++) {
-    const next: ChatOptions =
-      attempt === 0
-        ? opts
-        : {
-            ...opts,
-            maxTokens: Math.max(opts.maxTokens ?? 1000, 1000) * (attempt === 1 ? 3 : 6),
-            effort: 'low',
-          }
-    result = await chatOnce(kind, messages, next)
+    if (attempt === 0) {
+      result = await chatOnce(kind, messages, opts)
+      continue
+    }
+    // 预算增长要有上限：否则重试会变成 9000/18000 token，慢到超时
+    const base = opts.maxTokens ?? 1000
+    const grown = Math.min(Math.max(Math.round(base * (attempt === 1 ? 1.5 : 2)), 2000), 8000)
+    result = await chatOnce(kind, messages, { ...opts, maxTokens: grown, effort: 'low' })
   }
   return result
 }
