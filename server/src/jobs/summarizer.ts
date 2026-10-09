@@ -13,6 +13,7 @@ import {
   mergeGlobalSummaryPrompt, rebuildGlobalSummaryPrompt,
 } from '../llm/prompts.js'
 import { matchLore } from '../context/lore-match.js'
+import { scheduleSegmentRefresh } from './segmenter.js'
 import {
   addStateHistory, getChapter, getProject, listChaptersFull, listLore,
   updateChapter, updateLore, updateProject,
@@ -131,6 +132,8 @@ async function runJob(chapterId: string): Promise<void> {
         summary_micro: micro,
         summarized_len: ch.content.length,
       })
+      // 远段合段压缩依赖各章摘要，摘要变化后重压受影响的段
+      scheduleSegmentRefresh(ch.project_id)
     }
 
     // 2. 全书梗概滚动合并

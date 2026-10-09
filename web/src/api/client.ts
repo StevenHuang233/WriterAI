@@ -116,6 +116,8 @@ export interface ContextSettings {
   disabledBlocks: string[]
   excludedChapters: string[]
   pinnedChapters: string[]
+  /** 远段合段：每几章压缩成一段 */
+  groupSize: number
 }
 
 export interface ContextBlock {
@@ -123,6 +125,14 @@ export interface ContextBlock {
   label: string
   chars: number
   enabled: boolean
+}
+
+export interface ContextChainSegment {
+  startOrder: number
+  endOrder: number
+  chapterIds: string[]
+  /** llm = 模型压缩好的合段摘要；joined = 用各章极简摘要拼接 */
+  source: 'llm' | 'joined'
 }
 
 export interface ContextChainEntry {
@@ -136,6 +146,8 @@ export interface ContextChainEntry {
   pinned: boolean
   included: boolean
   reason?: string
+  /** 远段合段条目：覆盖多章 */
+  segment?: ContextChainSegment
 }
 
 export const apiContextSettings = (projectId: string) =>
@@ -155,6 +167,11 @@ export const apiContextPreview = (projectId: string, chapterId?: string) =>
   }>(`/api/projects/${projectId}/context-preview${chapterId ? `?chapterId=${chapterId}` : ''}`)
 export const apiChapterSummaries = (chapterId: string) =>
   api<{ summary: string; brief: string; micro: string; locked: boolean }>(`/api/chapters/${chapterId}/summaries`)
+export const apiRefreshSegments = (projectId: string) =>
+  api<{ ok: boolean; size: number; total: number; generated: number; skipped: number; failed: number }>(
+    `/api/projects/${projectId}/segments/refresh`,
+    { method: 'POST' },
+  )
 
 // ---------- 人物模块 ----------
 

@@ -133,15 +133,29 @@ const stmt = {
     disabled_blocks: string
     excluded_chapters: string
     pinned_chapters: string
+    group_size: number
   }>('SELECT * FROM project_context_settings WHERE project_id = ?'),
   upsertContextSettings: db.prepare(`
-    INSERT INTO project_context_settings (project_id, disabled_blocks, excluded_chapters, pinned_chapters, updated_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO project_context_settings (project_id, disabled_blocks, excluded_chapters, pinned_chapters, group_size, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(project_id) DO UPDATE SET
       disabled_blocks = excluded.disabled_blocks,
       excluded_chapters = excluded.excluded_chapters,
       pinned_chapters = excluded.pinned_chapters,
+      group_size = excluded.group_size,
       updated_at = excluded.updated_at
+  `),
+
+  listSegments: db.prepare<[string, number], SegmentRow>(
+    'SELECT * FROM chapter_segments WHERE project_id = ? AND size = ? ORDER BY start_order',
+  ),
+  deleteSegments: db.prepare('DELETE FROM chapter_segments WHERE project_id = ? AND size = ?'),
+  upsertSegment: db.prepare(`
+    INSERT INTO chapter_segments (project_id, size, start_order, end_order, chapter_ids, text, source_hash, updated_at)
+    VALUES (@project_id, @size, @start_order, @end_order, @chapter_ids, @text, @source_hash, @updated_at)
+    ON CONFLICT(project_id, size, start_order) DO UPDATE SET
+      end_order = excluded.end_order, chapter_ids = excluded.chapter_ids,
+      text = excluded.text, source_hash = excluded.source_hash, updated_at = excluded.updated_at
   `),
 
   getProfile: db.prepare<[string], CharacterProfileRow>('SELECT * FROM character_profiles WHERE lore_id = ?'),
@@ -413,6 +427,46 @@ export interface ContextSettings {
   disabledBlocks: string[]
   excludedChapters: string[]
   pinnedChapters: string[]
+  /** 远段合段：每几章压缩成一段 */
+  groupSize: number
+}
+
+/** 远段合段的默认章数 */
+export const DEFAULT_GROUP_SIZE = 3
+export const GROUP_SIZE_OPTIONS = [2, 3, 4, 5, 8] as const
+
+export function clampGroupSize(v: unknown): number {
+  const n = typeof v === 'number' ? Math.round(v) : Number(v)
+  if (!Number.isFinite(n)) return DEFAULT_GROUP_SIZE
+  return Math.min(10, Math.max(2, n))
+}
+
+export interface SegmentRow {
+  project_id: string
+  size: number
+  start_order: number
+  end_order: number
+  chapter_ids: string
+  text: string
+  source_hash: string
+  updated_at: number
+}
+
+export function listSegments(projectId: string, size: number): SegmentRow[] {
+  return stmt.listSegments.all(projectId, size)
+}
+
+export function upsertSegment(row: SegmentRow): void {
+  stmt.upsertSegment.run(row)
+}
+
+/** 供上下文组装使用：只取起始章节序号与压缩后的文本 */
+export function listSegmentTexts(projectId: string, size: number): { startOrder: number; text: string }[] {
+  return listSegments(projectId, size).map((r) => ({ startOrder: r.start_order, text: r.text }))
+}
+
+export function clearSegments(projectId: string, size: number): void {
+  stmt.deleteSegments.run(projectId, size)
 }
 
 function parseList(raw: string): string[] {
@@ -426,13 +480,20 @@ function parseList(raw: string): string[] {
 
 export function getContextSettings(projectId: string): ContextSettings {
   const row = stmt.getContextSettings.get(projectId) as
-    | { project_id: string; disabled_blocks: string; excluded_chapters: string; pinned_chapters: string }
+    | {
+        project_id: string
+        disabled_blocks: string
+        excluded_chapters: string
+        pinned_chapters: string
+        group_size: number
+      }
     | undefined
-  if (!row) return { disabledBlocks: [], excludedChapters: [], pinnedChapters: [] }
+  if (!row) return { disabledBlocks: [], excludedChapters: [], pinnedChapters: [], groupSize: DEFAULT_GROUP_SIZE }
   return {
     disabledBlocks: parseList(row.disabled_blocks),
     excludedChapters: parseList(row.excluded_chapters),
     pinnedChapters: parseList(row.pinned_chapters),
+    groupSize: clampGroupSize(row.group_size),
   }
 }
 
@@ -442,12 +503,14 @@ export function saveContextSettings(projectId: string, patch: Partial<ContextSet
     disabledBlocks: patch.disabledBlocks ?? cur.disabledBlocks,
     excludedChapters: patch.excludedChapters ?? cur.excludedChapters,
     pinnedChapters: patch.pinnedChapters ?? cur.pinnedChapters,
+    groupSize: patch.groupSize !== undefined ? clampGroupSize(patch.groupSize) : cur.groupSize,
   }
   stmt.upsertContextSettings.run(
     projectId,
     JSON.stringify(next.disabledBlocks),
     JSON.stringify(next.excludedChapters),
     JSON.stringify(next.pinnedChapters),
+    next.groupSize,
     now(),
   )
   return next

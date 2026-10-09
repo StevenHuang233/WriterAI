@@ -503,6 +503,25 @@ git push -u origin main
   - 填充顺序必须由近及远，否则预算被最远章节占满
   - 项目列表容器需要 overflow-y-auto，否则项目多了会溢出、新建按钮点不到
 
+## 15. 远段合段压缩（已实现）
+
+远段不再用单章上限（会把剧情切碎成一行行碎片），改为**多章合段一起压缩**：
+
+- **分档**：9～22 章每 `groupSize`（默认 3，可在界面调 2/4/5/8）章一段；更远按段再合并
+  （23～45 章两个段一条、45 章以外三个段一条），越远越粗
+- **段是基本单位**：先按 `floor(index / groupSize)` 划分章段，再按**段内最近一章的距离**定档位。
+  这样档位边界不会把段切开，预生成的压缩摘要才能整段用上（踩过：按单章档位分组会在档位
+  边界切碎段，导致 LLM 段永远不完整）
+- **存表** `chapter_segments`（project_id, size, start_order 主键，text, source_hash）；
+  source_hash 是段内各章摘要的哈希——摘要没变就不重新压缩
+- **生成**：`jobs/segmenter.ts`，章节摘要更新后 4 秒防抖触发；要求段内所有章节都有摘要；
+  强模型 + `effort`，maxTokens 2000（思考 token 占预算，1200 会截断/空返回）
+- **兜底**：无预生成段（或段内有章节被排除/固定导致不完整）时，用各章极简摘要按 ` → `
+  拼接，再在分隔符/标点处截断（`cutJoined`）
+- **接口**：`POST /api/projects/:id/segments/refresh`（force 重新压缩全部）
+- **链条条目**：合段条目 `chapterId = "seg:start-end"`，带 `segment` 字段（区间、覆盖的章节
+  id、source: llm|joined）；界面上纳入/固定按段内全部章节切换
+
 ## 15. 写作辅助功能（已实现）
 
 - **写作统计**：`writing_stats(project_id, chapter_id, day, delta)`；章节保存时按字数差记录增量，

@@ -33,3 +33,9 @@ if (!chapterCols.some((c) => c.name === 'summary_brief')) {
 if (!chapterCols.some((c) => c.name === 'summary_micro')) {
   db.exec("ALTER TABLE chapters ADD COLUMN summary_micro TEXT NOT NULL DEFAULT ''")
 }
+
+// 远段合段：每几章压缩成一段
+const ctxCols = db.prepare('PRAGMA table_info(project_context_settings)').all() as Array<{ name: string }>
+if (!ctxCols.some((c) => c.name === 'group_size')) {
+  db.exec('ALTER TABLE project_context_settings ADD COLUMN group_size INTEGER NOT NULL DEFAULT 3')
+}

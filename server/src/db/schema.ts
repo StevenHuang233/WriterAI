@@ -95,6 +95,20 @@ CREATE TABLE IF NOT EXISTS chapter_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_chapter ON chapter_snapshots(chapter_id, created_at DESC);
 
+-- 远段合段压缩：把连续的若干章压缩成一段话（避免远段被单章上限切碎）
+CREATE TABLE IF NOT EXISTS chapter_segments (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  size INTEGER NOT NULL,
+  start_order INTEGER NOT NULL,
+  end_order INTEGER NOT NULL,
+  chapter_ids TEXT NOT NULL DEFAULT '[]',
+  text TEXT NOT NULL DEFAULT '',
+  source_hash TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (project_id, size, start_order)
+);
+CREATE INDEX IF NOT EXISTS idx_segments_project ON chapter_segments(project_id, size);
+
 CREATE TABLE IF NOT EXISTS writing_stats (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,

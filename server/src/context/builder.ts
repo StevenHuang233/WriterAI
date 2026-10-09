@@ -26,6 +26,8 @@ export interface ContextSettingsInput {
   disabledBlocks?: string[]
   excludedChapters?: string[]
   pinnedChapters?: string[]
+  /** 远段合段：每几章压缩成一段 */
+  groupSize?: number
 }
 
 /** 分层压缩的档位：距离当前章越远，压缩越狠 */
@@ -35,16 +37,52 @@ export interface TierRule {
   /** 距离当前章多少章以内使用该档位 */
   within: number
   tier: SummaryTier
-  /** 该档位下每条摘要的最大字数 */
+  /** 该档位下每条（一章或一段）的最大字数 */
   maxChars: number
+  /**
+   * 是否启用「合段压缩」：把连续的若干章（数量由 groupSize 决定）
+   * 合并压缩成一条，而不是每章各占一条。远段单章上限会把剧情切碎，合段可以避免。
+   */
+  grouped?: boolean
+  /** 再把相邻的几「段」合成一条（1 = 一段一条），距离越远合得越粗 */
+  merge?: number
 }
+
+/** 远段默认每几章合成一段 */
+export const DEFAULT_GROUP_SIZE = 3
 
 export const DEFAULT_TIER_RULES: TierRule[] = [
   { within: 2, tier: 'full', maxChars: 320 },
   { within: 8, tier: 'brief', maxChars: 90 },
-  { within: 30, tier: 'micro', maxChars: 34 },
-  { within: Number.MAX_SAFE_INTEGER, tier: 'micro', maxChars: 22 },
+  { within: 22, tier: 'micro', maxChars: 130, grouped: true, merge: 1 },
+  { within: 45, tier: 'micro', maxChars: 90, grouped: true, merge: 2 },
+  { within: Number.MAX_SAFE_INTEGER, tier: 'micro', maxChars: 60, grouped: true, merge: 3 },
 ]
+
+/** 合段文本的连接符 */
+const SEG_JOIN = ' → '
+
+/** 该档位下平均每一章能分到多少字（合段后单章占用大幅下降） */
+export function charsPerChapter(rule: TierRule, groupSize: number = DEFAULT_GROUP_SIZE): number {
+  const span = rule.grouped ? groupSize * (rule.merge ?? 1) : 1
+  return rule.maxChars / span
+}
+
+/** 截断到 max 字，尽量在分隔符或标点处断开，避免把一句话截成半截 */
+export function cutJoined(text: string, max: number): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const floor = Math.floor(max * 0.6)
+  const sep = cut.lastIndexOf(SEG_JOIN)
+  if (sep >= floor) return cut.slice(0, sep)
+  let p = -1
+  for (const ch of ['。', '；', '，']) {
+    const i = cut.lastIndexOf(ch)
+    if (i > p) p = i
+  }
+  if (p >= floor) return cut.slice(0, p + 1)
+  return cut
+}
 
 export function tierForDistance(distance: number, rules: TierRule[] = DEFAULT_TIER_RULES): TierRule {
   for (const r of rules) {
@@ -57,6 +95,17 @@ export function pickTierText(ch: BuilderChapter, tier: SummaryTier): string {
   if (tier === 'full') return ch.summary || ch.summaryBrief || ch.summaryMicro || ''
   if (tier === 'brief') return ch.summaryBrief || ch.summary || ch.summaryMicro || ''
   return ch.summaryMicro || ch.summaryBrief || ch.summary || ''
+}
+
+export interface ChainSegment {
+  /** 起始章节序号 */
+  startOrder: number
+  /** 结束章节序号 */
+  endOrder: number
+  /** 该段覆盖的章节 id */
+  chapterIds: string[]
+  /** llm = 预先用模型压缩好的合段摘要；joined = 用各章极简摘要拼接的兜底 */
+  source: 'llm' | 'joined'
 }
 
 export interface ChainEntry {
@@ -73,10 +122,20 @@ export interface ChainEntry {
   included: boolean
   /** 未纳入的原因 */
   reason?: string
+  /** 合段条目（覆盖多章）时给出区间与来源 */
+  segment?: ChainSegment
+}
+
+/** 预先生成的合段摘要，按段的起始章节序号给出 */
+export interface SegmentText {
+  startOrder: number
+  text: string
 }
 
 /**
  * 组装前情链条：近详远略，尽量让全书都有机会进入上下文。
+ * - 近处：完整 / 一句话摘要，一章一条
+ * - 远处：连续若干章压缩成一条（合段），越远合得越粗，避免远段被单章上限切碎
  * 从最近的一章往前填，直到用完预算；被固定的章节优先（用完整摘要）。
  */
 export function buildHistoryChain(
@@ -86,6 +145,10 @@ export function buildHistoryChain(
     pinned?: string[]
     excluded?: string[]
     rules?: TierRule[]
+    /** 远段每几章合成一段 */
+    groupSize?: number
+    /** 预先用模型生成的合段摘要 */
+    segments?: SegmentText[]
     /** true 时只统计不拼文本（用于预览） */
     dry?: boolean
   },
@@ -93,22 +156,50 @@ export function buildHistoryChain(
   const pinned = new Set(opts.pinned ?? [])
   const excluded = new Set(opts.excluded ?? [])
   const rules = opts.rules ?? DEFAULT_TIER_RULES
+  const groupSize = Math.max(2, Math.min(10, Math.round(opts.groupSize ?? DEFAULT_GROUP_SIZE)))
   const entries: ChainEntry[] = []
   let used = 0
 
+  const orderOf = (ch: BuilderChapter, index: number) => ch.sortOrder ?? index + 1
   // 距离：最后一章为 1
-  const ordered = prev.map((ch, i) => ({ ch, distance: prev.length - i }))
+  const ordered = prev.map((ch, index) => ({ ch, index, distance: prev.length - index }))
   // 必须由近及远填充：否则预算会被最远的章节先占满
   const nearestFirst = [...ordered].reverse()
 
+  // 合段摘要：由“起始章节序号”定位到章段下标（floor(index / groupSize)）
+  const segTextByBase = new Map<number, string>()
+  const orderToIndex = new Map<number, number>()
+  for (const { ch, index } of ordered) orderToIndex.set(orderOf(ch, index), index)
+  for (const s of opts.segments ?? []) {
+    const idx = orderToIndex.get(s.startOrder)
+    if (idx === undefined) continue
+    if (!s.text.trim()) continue
+    segTextByBase.set(Math.floor(idx / groupSize), s.text.trim())
+  }
+
+  // 章段（每 groupSize 章一段）是合压的基本单位：先按段划分，再按段内最近一章的距离定档位，
+  // 这样档位边界不会把段切开，预先生成的合段摘要才能整段用上
+  const baseCount = new Map<number, number>()
+  const baseMaxIndex = new Map<number, number>()
+  for (const { index } of ordered) {
+    const k = Math.floor(index / groupSize)
+    baseCount.set(k, (baseCount.get(k) ?? 0) + 1)
+    baseMaxIndex.set(k, Math.max(baseMaxIndex.get(k) ?? -1, index))
+  }
+  const baseRule = new Map<number, TierRule>()
+  for (const [k, maxIndex] of baseMaxIndex) {
+    baseRule.set(k, tierForDistance(ordered.length - maxIndex, rules))
+  }
+
   // 1) 固定的章节优先（用完整摘要）
-  for (const { ch, distance } of nearestFirst) {
+  for (const { ch, distance, index } of nearestFirst) {
     if (!pinned.has(ch.id)) continue
     if (excluded.has(ch.id)) continue
+    const order = orderOf(ch, index)
     let text = pickTierText(ch, 'full').slice(0, 320)
     if (!text.trim()) {
       entries.push({
-        chapterId: ch.id, title: ch.title, order: ch.sortOrder ?? 0, distance, tier: 'full',
+        chapterId: ch.id, title: ch.title, order, distance, tier: 'full',
         text: '', chars: 0, pinned: true, included: false, reason: '暂无摘要',
       })
       continue
@@ -116,49 +207,131 @@ export function buildHistoryChain(
     const chars = text.length
     if (used + chars > opts.budget) {
       entries.push({
-        chapterId: ch.id, title: ch.title, order: ch.sortOrder ?? 0, distance, tier: 'full', text,
+        chapterId: ch.id, title: ch.title, order, distance, tier: 'full', text,
         chars, pinned: true, included: false, reason: '预算不足',
       })
       continue
     }
     used += chars
-    entries.push({ chapterId: ch.id, title: ch.title, order: ch.sortOrder ?? 0, distance, tier: 'full', text, chars, pinned: true, included: true })
+    entries.push({ chapterId: ch.id, title: ch.title, order, distance, tier: 'full', text, chars, pinned: true, included: true })
   }
 
-  // 2) 其余按“由近及远”填充
-  for (const { ch, distance } of nearestFirst) {
+  // 2) 其余按“由近及远”填充，远处按章段合并
+  interface Slot {
+    ch: BuilderChapter
+    index: number
+    distance: number
+    rule: TierRule
+    key: string
+  }
+  let buf: Slot[] = []
+
+  const pushEntry = (
+    members: Slot[],
+    rule: TierRule,
+    text: string,
+    chars: number,
+    included: boolean,
+    reason?: string,
+    source: ChainSegment['source'] = 'joined',
+  ) => {
+    const orders = members.map((m) => orderOf(m.ch, m.index))
+    const startOrder = orders[0]!
+    const endOrder = orders[orders.length - 1]!
+    const distance = Math.min(...members.map((m) => m.distance))
+    if (members.length === 1 && !rule.grouped) {
+      const m = members[0]!
+      entries.push({
+        chapterId: m.ch.id, title: m.ch.title, order: startOrder, distance, tier: rule.tier,
+        text, chars, pinned: false, included, reason,
+      })
+      return
+    }
+    entries.push({
+      chapterId: `seg:${startOrder}-${endOrder}`,
+      title: `第${startOrder}–${endOrder}章`,
+      order: startOrder,
+      distance,
+      tier: rule.tier,
+      text,
+      chars,
+      pinned: false,
+      included,
+      reason,
+      segment: { startOrder, endOrder, chapterIds: members.map((m) => m.ch.id), source },
+    })
+  }
+
+  const flush = () => {
+    if (buf.length === 0) return
+    const members = [...buf].sort((a, b) => a.index - b.index)
+    buf = []
+    // 段内最近的一章决定档位（越近越详细）
+    const rule = members[members.length - 1]!.rule
+
+    // 合段文本：优先用预生成的压缩摘要（要求该段章节完整），否则用各章极简摘要拼接
+    const baseKeys = [...new Set(members.map((m) => Math.floor(m.index / groupSize)))]
+    const expected = baseKeys.reduce((s, k) => s + (baseCount.get(k) ?? 0), 0)
+    const complete = members.length === expected
+    let text = ''
+    let source: ChainSegment['source'] = 'joined'
+    if (rule.grouped && complete) {
+      const texts = baseKeys.map((k) => segTextByBase.get(k) ?? '')
+      if (texts.length > 0 && texts.every((t) => t.length > 0)) {
+        text = cutJoined(texts.join(SEG_JOIN), rule.maxChars)
+        source = 'llm'
+      }
+    }
+    if (!text) {
+      const joined = members
+        .map((m) => pickTierText(m.ch, rule.tier === 'full' ? 'full' : 'micro').trim())
+        .filter((t) => t.length > 0)
+        .join(SEG_JOIN)
+      text = cutJoined(joined, rule.maxChars)
+    }
+
+    if (!text.trim()) {
+      for (const m of members) {
+        entries.push({
+          chapterId: m.ch.id, title: m.ch.title, order: orderOf(m.ch, m.index), distance: m.distance,
+          tier: rule.tier, text: '', chars: 0, pinned: false, included: false, reason: '暂无摘要',
+        })
+      }
+      return
+    }
+    const chars = text.length
+    if (used + chars > opts.budget) {
+      pushEntry(members, rule, text, chars, false, '预算不足（更远）', source)
+      return
+    }
+    used += chars
+    pushEntry(members, rule, text, chars, true, undefined, source)
+  }
+
+  for (const { ch, distance, index } of nearestFirst) {
     if (pinned.has(ch.id)) continue
     if (excluded.has(ch.id)) {
       entries.push({
-        chapterId: ch.id, title: ch.title, order: ch.sortOrder ?? 0, distance, tier: tierForDistance(distance, rules).tier,
+        chapterId: ch.id, title: ch.title, order: orderOf(ch, index), distance,
+        tier: tierForDistance(distance, rules).tier,
         text: '', chars: 0, pinned: false, included: false, reason: '已手动排除',
       })
       continue
     }
-    const rule = tierForDistance(distance, rules)
-    let text = pickTierText(ch, rule.tier).slice(0, rule.maxChars)
-    if (!text.trim()) {
-      entries.push({
-        chapterId: ch.id, title: ch.title, order: ch.sortOrder ?? 0, distance, tier: rule.tier,
-        text: '', chars: 0, pinned: false, included: false, reason: '暂无摘要',
-      })
-      continue
-    }
-    const chars = text.length
-    if (used + chars > opts.budget) {
-      entries.push({
-        chapterId: ch.id, title: ch.title, order: ch.sortOrder ?? 0, distance, tier: rule.tier, text,
-        chars, pinned: false, included: false, reason: '预算不足（更远）',
-      })
-      continue
-    }
-    used += chars
-    entries.push({ chapterId: ch.id, title: ch.title, order: ch.sortOrder ?? 0, distance, tier: rule.tier, text, chars, pinned: false, included: true })
+    const rule = baseRule.get(Math.floor(index / groupSize)) ?? tierForDistance(distance, rules)
+    const key = rule.grouped
+      ? `g:${Math.floor(Math.floor(index / groupSize) / (rule.merge ?? 1))}`
+      : `s:${ch.id}`
+    if (buf.length > 0 && buf[0]!.key !== key) flush()
+    buf.push({ ch, index, distance, rule, key })
   }
+  flush()
 
   // 输出按时间顺序（远 → 近）
   const included = [...entries].filter((e) => e.included).reverse()
-  const text = included.map((e) => `第${e.order || e.distance}章《${e.title}》：${e.text}`).join('\n')
+  const text = included
+    .map((e) => (e.segment ? `第${e.segment.startOrder}–${e.segment.endOrder}章：${e.text}` : `第${e.order}章《${e.title}》：${e.text}`))
+    .join('\n')
   return { entries, text, used }
 }
 
@@ -193,6 +366,8 @@ export interface BuildInput {
   relations?: string[]
   /** 用户在界面里的上下文选择 */
   contextSettings?: ContextSettingsInput
+  /** 预先生成的远段合段摘要 */
+  segments?: SegmentText[]
 }
 
 export interface BuildResult {
@@ -275,6 +450,8 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
     budget: B.history,
     pinned: input.contextSettings?.pinnedChapters,
     excluded: input.contextSettings?.excludedChapters,
+    groupSize: input.contextSettings?.groupSize,
+    segments: input.segments,
   })
 
   // 关键词触发设定

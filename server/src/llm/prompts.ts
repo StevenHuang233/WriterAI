@@ -131,6 +131,32 @@ ${newText}`,
   ]
 }
 
+/**
+ * 远段合段压缩：把连续的若干章压缩成一段连贯的话。
+ * 逐章罗列的极简摘要会把剧情切碎，合段后仍是一条可读的前情。
+ */
+export function segmentCompressPrompt(
+  chapters: { order: number; title: string; summary: string }[],
+  maxChars: number,
+): ChatMessage[] {
+  const parts = chapters
+    .map((c) => `第${c.order}章《${c.title}》：${c.summary.trim()}`)
+    .join('\n')
+  return [
+    {
+      role: 'user',
+      content: `下面是同一部小说里连续的 ${chapters.length} 章的摘要。请把它们压缩成一段连贯的话，作为后续写作时的「前情」提示。
+要求：
+1. 只输出这一段话，不要任何标题、编号或解释。
+2. 长度控制在 ${maxChars} 字以内；不要逐章罗列，要连成一条主线。
+3. 保留因果链、人物的去向与处境变化、物品得失、以及所有未解决的伏笔与悬念。
+4. 用人物的名字而不是「他/她」这类代词，避免与后文混淆。
+
+${parts}`,
+    },
+  ]
+}
+
 /** 全书梗概滚动合并 */
 export function mergeGlobalSummaryPrompt(oldSummary: string, chapterTitle: string, chapterSummary: string): ChatMessage[] {
   const old = oldSummary.trim() || '（暂无，这是第一章）'

@@ -6,7 +6,7 @@ import { createChatStream } from '../llm/client.js'
 import { buildSuggestMessages } from '../context/builder.js'
 import {
   getChapter, getContextSettings, getProject, listChapterMetas, listLore,
-  listRelationsFor, logSuggestion,
+  listRelationsFor, listSegmentTexts, logSuggestion,
 } from '../db/repo.js'
 import { safeParseAliases } from './lore.js'
 import { notFound, parseBody } from './util.js'
@@ -63,6 +63,8 @@ suggestRoute.post('/suggest', async (c) => {
 
   const chapters = listChapterMetas(body.projectId)
   const lore = listLore(body.projectId)
+  const contextSettings = getContextSettings(body.projectId)
+  const segments = listSegmentTexts(body.projectId, contextSettings.groupSize)
 
   const buildInput = {
     project: {
@@ -98,7 +100,8 @@ suggestRoute.post('/suggest', async (c) => {
     mode: body.mode,
     length: body.length ?? 'medium',
     outline: chapter.outline,
-    contextSettings: getContextSettings(body.projectId),
+    contextSettings,
+    segments,
   }
 
   // 先构建一次拿到本次出场人物，再把他们的关系加入上下文重建

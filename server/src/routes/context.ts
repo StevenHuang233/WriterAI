@@ -3,8 +3,9 @@ import { z } from 'zod'
 import { buildSuggestMessages, BLOCK_LABELS, DEFAULT_TIER_RULES } from '../context/builder.js'
 import {
   getChapter, getContextSettings, getProject, listChapterMetas, listLore, listRelationsFor,
-  saveContextSettings,
+  listSegmentTexts, saveContextSettings,
 } from '../db/repo.js'
+import { refreshSegments } from '../jobs/segmenter.js'
 import { notFound, parseBody } from './util.js'
 
 export const contextRoute = new Hono()
@@ -13,13 +14,28 @@ const SettingsSchema = z.object({
   disabledBlocks: z.array(z.string().max(50)).max(50).optional(),
   excludedChapters: z.array(z.string().max(100)).max(1000).optional(),
   pinnedChapters: z.array(z.string().max(100)).max(200).optional(),
+  groupSize: z.number().int().min(2).max(10).optional(),
 })
 
 /** 当前上下文选择 */
 contextRoute.get('/projects/:id/context-settings', (c) => {
   const id = c.req.param('id')
   if (!getProject(id)) notFound('项目不存在')
-  return c.json({ settings: getContextSettings(id), tierRules: DEFAULT_TIER_RULES, blockLabels: BLOCK_LABELS })
+  const settings = getContextSettings(id)
+  return c.json({
+    settings,
+    tierRules: DEFAULT_TIER_RULES,
+    blockLabels: BLOCK_LABELS,
+    segments: listSegmentTexts(id, settings.groupSize).length,
+  })
+})
+
+/** 重新压缩远段合段摘要 */
+contextRoute.post('/projects/:id/segments/refresh', async (c) => {
+  const id = c.req.param('id')
+  if (!getProject(id)) notFound('项目不存在')
+  const r = await refreshSegments(id, { force: true })
+  return c.json({ ok: true, ...r })
 })
 
 /** 保存上下文选择 */
@@ -75,6 +91,7 @@ contextRoute.get('/projects/:id/context-preview', (c) => {
     mode: 'inline',
     outline: current?.outline,
     contextSettings: settings,
+    segments: listSegmentTexts(id, settings.groupSize),
   })
 
   return c.json({
