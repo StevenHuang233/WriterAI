@@ -64,7 +64,7 @@ function startServer() {
     return false
   }
   const node = findNode()
-  serverProc = spawn(node, [entry], {
+  serverProc = spawn(node, [SERVER_ENTRY], {
     cwd: ROOT,
     env: { ...process.env, PORT: String(PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],

@@ -18,8 +18,23 @@ export interface SegmentRefreshResult {
 const SEGMENT_TARGET_CHARS = 110
 const MAX_STORED_CHARS = 400
 
+export interface SegmentProgress {
+  running: boolean
+  total: number
+  done: number
+  generated: number
+  failed: number
+}
+
 const inflight = new Set<string>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
+/** 上一次的结果：并发调用时至少有东西可返回 */
+const lastResult = new Map<string, SegmentRefreshResult>()
+const progress = new Map<string, SegmentProgress>()
+
+export function getSegmentProgress(projectId: string): SegmentProgress {
+  return progress.get(projectId) ?? { running: false, total: 0, done: 0, generated: 0, failed: 0 }
+}
 
 function hashInputs(inputs: { order: number; title: string; summary: string }[]): string {
   return createHash('sha1').update(JSON.stringify(inputs)).digest('hex').slice(0, 16)
@@ -34,22 +49,29 @@ export async function refreshSegments(
   opts: { force?: boolean } = {},
 ): Promise<SegmentRefreshResult> {
   if (inflight.has(projectId)) {
-    return { size: 0, total: 0, generated: 0, skipped: 0, failed: 0 }
+    return lastResult.get(projectId) ?? { size: 0, total: 0, generated: 0, skipped: 0, failed: 0 }
   }
   inflight.add(projectId)
   try {
     const settings = getContextSettings(projectId)
     const size = settings.groupSize
     const chapters = listChaptersFull(projectId)
-    const result: SegmentRefreshResult = { size, total: 0, generated: 0, skipped: 0, failed: 0 }
-    if (chapters.length === 0) return result
+    const total = Math.ceil(chapters.length / size)
+    const result: SegmentRefreshResult = { size, total, generated: 0, skipped: 0, failed: 0 }
+    lastResult.set(projectId, result)
+    const prog: SegmentProgress = { running: true, total, done: 0, generated: 0, failed: 0 }
+    progress.set(projectId, prog)
+    if (chapters.length === 0) {
+      prog.running = false
+      return result
+    }
 
     const existing = new Map(listSegments(projectId, size).map((r) => [r.start_order, r]))
 
     for (let i = 0; i < chapters.length; i += size) {
       const members = chapters.slice(i, i + size)
       if (members.length === 0) continue
-      result.total++
+      prog.done++
       const inputs = members.map((c) => ({
         order: c.sort_order,
         title: c.title,
@@ -67,16 +89,26 @@ export async function refreshSegments(
         result.skipped++
         continue
       }
+      const range = `第${startOrder}–${members[members.length - 1]!.sort_order}章`
       try {
-        const text = await chatOnceRobust('strong', segmentCompressPrompt(inputs, SEGMENT_TARGET_CHARS), {
+        let text = await chatOnceRobust('strong', segmentCompressPrompt(inputs, SEGMENT_TARGET_CHARS), {
           // 推理模型的思考 token 会占用输出预算，留足余量
-          maxTokens: 2000,
+          maxTokens: 2500,
           temperature: 0.3,
           effort: env.strong.effort || undefined,
         })
         if (!text.trim()) {
+          // 输入越长，思考占得越多：退化成更短的素材再压一次
+          const short = inputs.map((i) => ({ ...i, summary: i.summary.slice(0, 120) }))
+          text = await chatOnceRobust('strong', segmentCompressPrompt(short, SEGMENT_TARGET_CHARS), {
+            maxTokens: 3000,
+            temperature: 0.3,
+            effort: 'low',
+          })
+        }
+        if (!text.trim()) {
           result.failed++
-          console.error(`[segmenter] 第${startOrder}–${members[members.length - 1]!.sort_order}章压缩结果为空`)
+          console.error(`[segmenter] ${range} 压缩结果为空`)
           continue
         }
         upsertSegment({
@@ -90,17 +122,19 @@ export async function refreshSegments(
           updated_at: Date.now(),
         })
         result.generated++
+        prog.generated = result.generated
       } catch (e) {
         result.failed++
-        console.error(
-          `[segmenter] 第${startOrder}–${members[members.length - 1]!.sort_order}章压缩失败:`,
-          e instanceof Error ? e.message : String(e),
-        )
+        prog.failed = result.failed
+        console.error(`[segmenter] ${range} 压缩失败:`, e instanceof Error ? e.message : String(e))
       }
     }
+    prog.running = false
     return result
   } finally {
     inflight.delete(projectId)
+    const p = progress.get(projectId)
+    if (p) p.running = false
   }
 }
 

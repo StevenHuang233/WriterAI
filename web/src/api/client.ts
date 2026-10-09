@@ -211,11 +211,22 @@ export const apiContextTree = (projectId: string, chapterId?: string) =>
   api<{ tree: ContextTree; settings: ContextSettings; activeChapterId: string }>(
     `/api/projects/${projectId}/context-tree${chapterId ? `?chapterId=${chapterId}` : ''}`,
   )
+export interface SegmentProgressInfo {
+  running: boolean
+  total: number
+  done: number
+  generated: number
+  failed: number
+}
+
+/** 后台压缩远段，立即返回（用 apiSegmentProgress 轮询进度） */
 export const apiRefreshSegments = (projectId: string) =>
-  api<{ ok: boolean; size: number; total: number; generated: number; skipped: number; failed: number }>(
+  api<{ ok: boolean; started: boolean; progress: SegmentProgressInfo }>(
     `/api/projects/${projectId}/segments/refresh`,
     { method: 'POST' },
   )
+export const apiSegmentProgress = (projectId: string) =>
+  api<{ progress: SegmentProgressInfo }>(`/api/projects/${projectId}/segments/progress`)
 
 // ---------- 人物模块 ----------
 

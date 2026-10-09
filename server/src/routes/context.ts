@@ -6,7 +6,7 @@ import {
   getChapter, getContextSettings, getProject, listChapterMetas, listLore, listRelationsFor,
   listSegmentTexts, saveContextSettings,
 } from '../db/repo.js'
-import { refreshSegments } from '../jobs/segmenter.js'
+import { getSegmentProgress, refreshSegments } from '../jobs/segmenter.js'
 import { notFound, parseBody } from './util.js'
 
 export const contextRoute = new Hono()
@@ -32,12 +32,21 @@ contextRoute.get('/projects/:id/context-settings', (c) => {
   })
 })
 
-/** 重新压缩远段合段摘要 */
-contextRoute.post('/projects/:id/segments/refresh', async (c) => {
+/** 重新压缩远段合段摘要：后台执行，立即返回（压缩一段要几十秒，不能让界面干等） */
+contextRoute.post('/projects/:id/segments/refresh', (c) => {
   const id = c.req.param('id')
   if (!getProject(id)) notFound('项目不存在')
-  const r = await refreshSegments(id, { force: true })
-  return c.json({ ok: true, ...r })
+  const before = getSegmentProgress(id)
+  if (before.running) return c.json({ ok: true, started: false, progress: before })
+  void refreshSegments(id, { force: true }).catch(() => undefined)
+  return c.json({ ok: true, started: true, progress: getSegmentProgress(id) })
+})
+
+/** 压缩进度 */
+contextRoute.get('/projects/:id/segments/progress', (c) => {
+  const id = c.req.param('id')
+  if (!getProject(id)) notFound('项目不存在')
+  return c.json({ progress: getSegmentProgress(id) })
 })
 
 /** 保存上下文选择 */

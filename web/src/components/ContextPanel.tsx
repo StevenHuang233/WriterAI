@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  apiContextPreview, apiSaveContextSettings, apiRefreshSegments, apiContextTree,
+  apiContextPreview, apiSaveContextSettings, apiRefreshSegments, apiSegmentProgress, apiContextTree,
   type ContextBlock, type ContextChainEntry, type ContextSettings, type ContextTree,
 } from '../api/client'
 import { useStore } from '../store/useStore'
@@ -102,12 +102,21 @@ export default function ContextPanel() {
     setMessage(null)
     try {
       const r = await apiRefreshSegments(projectId)
-      setMessage(
-        r.generated > 0
-          ? `已压缩 ${r.generated} 段（跳过 ${r.skipped}，失败 ${r.failed}）`
-          : `没有需要重新压缩的段（跳过 ${r.skipped}，失败 ${r.failed}）`,
-      )
+      if (!r.started) {
+        setMessage('已有压缩任务在进行中')
+        setSegBusy(false)
+        return
+      }
+      // 后台压缩：轮询进度，完成后刷新结构图
+      for (let i = 0; i < 60; i++) {
+        await new Promise((res) => setTimeout(res, 3000))
+        const { progress } = await apiSegmentProgress(projectId)
+        setMessage(`压缩中 ${progress.done}/${progress.total} 段（成功 ${progress.generated}，失败 ${progress.failed}）`)
+        if (!progress.running) break
+      }
       await load()
+      const { progress } = await apiSegmentProgress(projectId)
+      setMessage(`压缩完成：成功 ${progress.generated} 段，失败 ${progress.failed} 段`)
     } catch (e) {
       setMessage(e instanceof Error ? e.message : '压缩失败')
     } finally {
