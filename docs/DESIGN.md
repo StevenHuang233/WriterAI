@@ -519,6 +519,21 @@ git push -u origin main
 - **兜底**：无预生成段（或段内有章节被排除/固定导致不完整）时，用各章极简摘要按 ` → `
   拼接，再在分隔符/标点处截断（`cutJoined`）
 - **接口**：`POST /api/projects/:id/segments/refresh`（force 重新压缩全部）
+
+## 16. 前情结构图与手动锁定粒度（已实现）
+
+- **层级**：0 单章 / 1 每 groupSize 章 / 2 每 2×groupSize / 3 每 4×groupSize。
+  倍率取 1/2/4（不是 1/2/3），粗层正好由两个细层组成，父子严格包含，才能排成树
+- `context/tree.ts:buildContextTree()`：先跑一次真实的 `buildHistoryChain()`，
+  再把链条条目按 `nodeKey`（`L{level}:{startOrder}`）映射回树节点，
+  因此界面上的颜色就是提词时实际生效的部分，不是另算一套
+- **状态**：locked / excluded / pinned / included / over（预算挤掉）/ unused
+- **手动锁定**：`project_context_settings.locked_nodes` 存节点 key；
+  `buildHistoryChain` 在处理完固定章节后、自动分组前，按粒度从粗到细处理锁定节点，
+  被占用的章节记入 `assigned`，自动分组时跳过（保证同一批章节只出现一次）
+- **接口**：`GET /api/projects/:id/context-tree?chapterId=&budget=`
+- 前端 `ContextTreeView`：递归渲染，默认展开「被用到的节点及其祖先」，
+  每个节点提供 用此层 / 排除 / 固定（仅叶子）
 - **链条条目**：合段条目 `chapterId = "seg:start-end"`，带 `segment` 字段（区间、覆盖的章节
   id、source: llm|joined）；界面上纳入/固定按段内全部章节切换
 

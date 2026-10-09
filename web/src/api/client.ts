@@ -118,6 +118,8 @@ export interface ContextSettings {
   pinnedChapters: string[]
   /** 远段合段：每几章压缩成一段 */
   groupSize: number
+  /** 结构图里手动锁定「用这一层」的节点 key */
+  lockedNodes: string[]
 }
 
 export interface ContextBlock {
@@ -167,6 +169,48 @@ export const apiContextPreview = (projectId: string, chapterId?: string) =>
   }>(`/api/projects/${projectId}/context-preview${chapterId ? `?chapterId=${chapterId}` : ''}`)
 export const apiChapterSummaries = (chapterId: string) =>
   api<{ summary: string; brief: string; micro: string; locked: boolean }>(`/api/chapters/${chapterId}/summaries`)
+// ---------- 前情结构图 ----------
+
+export interface TreeNode {
+  key: string
+  level: number
+  label: string
+  startOrder: number
+  endOrder: number
+  chapterIds: string[]
+  span: number
+  tier: 'full' | 'brief' | 'micro'
+  maxChars: number
+  text: string
+  source?: 'llm' | 'joined'
+  state: 'included' | 'locked' | 'over' | 'pinned' | 'excluded' | 'unused'
+  chars: number
+  distance: number
+  children: string[]
+  excluded: boolean
+  pinned: boolean
+}
+
+export interface TreeLevelInfo {
+  level: number
+  name: string
+  span: number
+  nodes: TreeNode[]
+}
+
+export interface ContextTree {
+  groupSize: number
+  levels: TreeLevelInfo[]
+  usedChars: number
+  budget: number
+  includedKeys: string[]
+  totalChapters: number
+}
+
+export const apiContextTree = (projectId: string, chapterId?: string) =>
+  api<{ tree: ContextTree; settings: ContextSettings; activeChapterId: string }>(
+    `/api/projects/${projectId}/context-tree${chapterId ? `?chapterId=${chapterId}` : ''}`,
+  )
 export const apiRefreshSegments = (projectId: string) =>
   api<{ ok: boolean; size: number; total: number; generated: number; skipped: number; failed: number }>(
     `/api/projects/${projectId}/segments/refresh`,

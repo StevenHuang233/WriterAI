@@ -39,3 +39,6 @@ const ctxCols = db.prepare('PRAGMA table_info(project_context_settings)').all() 
 if (!ctxCols.some((c) => c.name === 'group_size')) {
   db.exec('ALTER TABLE project_context_settings ADD COLUMN group_size INTEGER NOT NULL DEFAULT 3')
 }
+if (!ctxCols.some((c) => c.name === 'locked_nodes')) {
+  db.exec("ALTER TABLE project_context_settings ADD COLUMN locked_nodes TEXT NOT NULL DEFAULT '[]'")
+}

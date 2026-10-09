@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
-  apiContextPreview, apiSaveContextSettings, apiRefreshSegments,
-  type ContextBlock, type ContextChainEntry, type ContextSettings,
+  apiContextPreview, apiSaveContextSettings, apiRefreshSegments, apiContextTree,
+  type ContextBlock, type ContextChainEntry, type ContextSettings, type ContextTree,
 } from '../api/client'
 import { useStore } from '../store/useStore'
+import ContextTreeView from './ContextTreeView'
 
 const TIER_LABELS: Record<string, string> = {
   full: '完整摘要',
@@ -23,6 +24,8 @@ export default function ContextPanel() {
   const [busy, setBusy] = useState(false)
   const [segBusy, setSegBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [view, setView] = useState<'list' | 'tree'>('tree')
+  const [tree, setTree] = useState<ContextTree | null>(null)
 
   async function load() {
     if (!projectId) return
@@ -31,12 +34,17 @@ export default function ContextPanel() {
     setBlocks(r.blocks)
     setChain(r.chain)
     setTotal(r.totalChars)
+    if (view === 'tree') {
+      const t = await apiContextTree(projectId, activeChapterId ?? undefined)
+      setTree(t.tree)
+      setSettings(t.settings)
+    }
   }
 
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, activeChapterId])
+  }, [projectId, activeChapterId, view])
 
   async function apply(patch: Partial<ContextSettings>) {
     if (!projectId || !settings) return
@@ -125,6 +133,15 @@ export default function ContextPanel() {
         远处章节不再逐章罗列，而是每 {settings?.groupSize ?? 3} 章压缩成一段。
       </div>
 
+      <div className="flex gap-1">
+        <span className={`tab ${view === 'tree' ? 'active' : ''}`} onClick={() => setView('tree')}>
+          结构图
+        </span>
+        <span className={`tab ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>
+          链条列表
+        </span>
+      </div>
+
       <div className="rounded-md p-2 text-[12px]" style={{ background: 'var(--bg)' }}>
         合计约 {total} 字 · 前情链条纳入 {includedChapters}/{allChapters} 章（{chain.filter((c) => c.included).length} 条
         {llmSegments > 0 ? `，其中 ${llmSegments} 条为模型压缩` : ''}）
@@ -165,7 +182,11 @@ export default function ContextPanel() {
         {message && <div className="muted mb-2 text-[12px]">{message}</div>}
       </div>
 
-      <div>
+      {view === 'tree' && tree && settings && (
+        <ContextTreeView tree={tree} settings={settings} busy={busy} onPatch={(patch) => void apply(patch)} />
+      )}
+
+      <div style={{ display: view === 'list' ? undefined : 'none' }}>
         <div className="mb-1 flex items-center justify-between">
           <span className="text-[12px] muted">前情链条（近详远略）</span>
           <span className="muted text-[11px]">固定 = 始终用完整摘要</span>

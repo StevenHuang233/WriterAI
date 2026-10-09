@@ -28,6 +28,8 @@ export interface ContextSettingsInput {
   pinnedChapters?: string[]
   /** 远段合段：每几章压缩成一段 */
   groupSize?: number
+  /** 用户手动锁定「用这一层」的树节点 key */
+  lockedNodes?: string[]
 }
 
 /** 分层压缩的档位：距离当前章越远，压缩越狠 */
@@ -56,8 +58,49 @@ export const DEFAULT_TIER_RULES: TierRule[] = [
   { within: 8, tier: 'brief', maxChars: 90 },
   { within: 22, tier: 'micro', maxChars: 130, grouped: true, merge: 1 },
   { within: 45, tier: 'micro', maxChars: 90, grouped: true, merge: 2 },
-  { within: Number.MAX_SAFE_INTEGER, tier: 'micro', maxChars: 60, grouped: true, merge: 3 },
+  // merge 取 1/2/4（而不是 1/2/3）：这样粗粒度节点正好由两个细粒度节点组成，能排成严格的树
+  { within: Number.MAX_SAFE_INTEGER, tier: 'micro', maxChars: 60, grouped: true, merge: 4 },
 ]
+
+/** 树的层级：0 = 单章，n = 每 groupSize × 2^(n-1) 章 */
+export const MAX_TREE_LEVEL = 3
+
+export function mergeForLevel(level: number): number {
+  return level <= 0 ? 1 : 2 ** (level - 1)
+}
+
+export function levelForMerge(merge: number): number {
+  if (merge <= 1) return 1
+  return Math.round(Math.log2(merge)) + 1
+}
+
+/** 该层节点覆盖多少章 */
+export function spanOfLevel(level: number, groupSize: number): number {
+  return level <= 0 ? 1 : groupSize * mergeForLevel(level)
+}
+
+/** 树节点 key，如 L2:7 */
+export function nodeKey(level: number, startOrder: number): string {
+  return `L${level}:${startOrder}`
+}
+
+export function parseNodeKey(key: string): { level: number; startOrder: number } | null {
+  const m = /^L(\d+):(\d+)$/.exec(key.trim())
+  if (!m) return null
+  const level = Number(m[1])
+  const startOrder = Number(m[2])
+  if (!Number.isFinite(level) || !Number.isFinite(startOrder)) return null
+  if (level < 0 || level > MAX_TREE_LEVEL) return null
+  return { level, startOrder }
+}
+
+/** 按层级找对应的档位规则（锁定节点时用） */
+export function ruleForLevel(level: number, rules: TierRule[] = DEFAULT_TIER_RULES): TierRule {
+  if (level <= 0) return tierForDistance(1, rules)
+  const merge = mergeForLevel(level)
+  const grouped = rules.filter((r) => r.grouped)
+  return grouped.find((r) => (r.merge ?? 1) === merge) ?? grouped[grouped.length - 1] ?? rules[rules.length - 1]!
+}
 
 /** 合段文本的连接符 */
 const SEG_JOIN = ' → '
@@ -124,6 +167,12 @@ export interface ChainEntry {
   reason?: string
   /** 合段条目（覆盖多章）时给出区间与来源 */
   segment?: ChainSegment
+  /** 对应的树节点 key（L0:3 / L1:1 …），供结构图高亮 */
+  nodeKey: string
+  /** 该条目在树中的层级（0 = 单章） */
+  level: number
+  /** 用户手动锁定使用这一层 */
+  locked?: boolean
 }
 
 /** 预先生成的合段摘要，按段的起始章节序号给出 */
@@ -144,6 +193,8 @@ export function buildHistoryChain(
     budget: number
     pinned?: string[]
     excluded?: string[]
+    /** 用户手动锁定「用这一层」的树节点 key */
+    locked?: string[]
     rules?: TierRule[]
     /** 远段每几章合成一段 */
     groupSize?: number
@@ -155,6 +206,8 @@ export function buildHistoryChain(
 ): { entries: ChainEntry[]; text: string; used: number } {
   const pinned = new Set(opts.pinned ?? [])
   const excluded = new Set(opts.excluded ?? [])
+  /** 已被固定或锁定的节点占用的章节，自动分组时跳过 */
+  const assigned = new Set<string>()
   const rules = opts.rules ?? DEFAULT_TIER_RULES
   const groupSize = Math.max(2, Math.min(10, Math.round(opts.groupSize ?? DEFAULT_GROUP_SIZE)))
   const entries: ChainEntry[] = []
@@ -197,10 +250,12 @@ export function buildHistoryChain(
     if (excluded.has(ch.id)) continue
     const order = orderOf(ch, index)
     let text = pickTierText(ch, 'full').slice(0, 320)
+    assigned.add(ch.id)
     if (!text.trim()) {
       entries.push({
         chapterId: ch.id, title: ch.title, order, distance, tier: 'full',
         text: '', chars: 0, pinned: true, included: false, reason: '暂无摘要',
+        nodeKey: nodeKey(0, order), level: 0,
       })
       continue
     }
@@ -209,11 +264,15 @@ export function buildHistoryChain(
       entries.push({
         chapterId: ch.id, title: ch.title, order, distance, tier: 'full', text,
         chars, pinned: true, included: false, reason: '预算不足',
+        nodeKey: nodeKey(0, order), level: 0,
       })
       continue
     }
     used += chars
-    entries.push({ chapterId: ch.id, title: ch.title, order, distance, tier: 'full', text, chars, pinned: true, included: true })
+    entries.push({
+      chapterId: ch.id, title: ch.title, order, distance, tier: 'full', text, chars,
+      pinned: true, included: true, nodeKey: nodeKey(0, order), level: 0,
+    })
   }
 
   // 2) 其余按“由近及远”填充，远处按章段合并
@@ -232,18 +291,21 @@ export function buildHistoryChain(
     text: string,
     chars: number,
     included: boolean,
-    reason?: string,
-    source: ChainSegment['source'] = 'joined',
+    reason: string | undefined,
+    source: ChainSegment['source'],
+    level: number,
+    locked = false,
   ) => {
     const orders = members.map((m) => orderOf(m.ch, m.index))
     const startOrder = orders[0]!
     const endOrder = orders[orders.length - 1]!
     const distance = Math.min(...members.map((m) => m.distance))
-    if (members.length === 1 && !rule.grouped) {
+    if (members.length === 1 && level === 0) {
       const m = members[0]!
       entries.push({
         chapterId: m.ch.id, title: m.ch.title, order: startOrder, distance, tier: rule.tier,
         text, chars, pinned: false, included, reason,
+        nodeKey: nodeKey(0, startOrder), level: 0, locked,
       })
       return
     }
@@ -259,20 +321,22 @@ export function buildHistoryChain(
       included,
       reason,
       segment: { startOrder, endOrder, chapterIds: members.map((m) => m.ch.id), source },
+      nodeKey: nodeKey(level, startOrder),
+      level,
+      locked,
     })
   }
 
-  const flush = () => {
-    if (buf.length === 0) return
-    const members = [...buf].sort((a, b) => a.index - b.index)
-    buf = []
-    // 段内最近的一章决定档位（越近越详细）
-    const rule = members[members.length - 1]!.rule
+  /** 计算一组章节的文本并产出条目（自动分组与手动锁定共用） */
+  const emitGroup = (members: Slot[], rule: TierRule, levelOverride?: number) => {
+    const sorted = [...members].sort((a, b) => a.index - b.index)
+    if (sorted.length === 0) return
+    const level = levelOverride ?? (rule.grouped ? levelForMerge(rule.merge ?? 1) : 0)
 
     // 合段文本：优先用预生成的压缩摘要（要求该段章节完整），否则用各章极简摘要拼接
-    const baseKeys = [...new Set(members.map((m) => Math.floor(m.index / groupSize)))]
+    const baseKeys = [...new Set(sorted.map((m) => Math.floor(m.index / groupSize)))]
     const expected = baseKeys.reduce((s, k) => s + (baseCount.get(k) ?? 0), 0)
-    const complete = members.length === expected
+    const complete = sorted.length === expected
     let text = ''
     let source: ChainSegment['source'] = 'joined'
     if (rule.grouped && complete) {
@@ -283,7 +347,7 @@ export function buildHistoryChain(
       }
     }
     if (!text) {
-      const joined = members
+      const joined = sorted
         .map((m) => pickTierText(m.ch, rule.tier === 'full' ? 'full' : 'micro').trim())
         .filter((t) => t.length > 0)
         .join(SEG_JOIN)
@@ -291,30 +355,62 @@ export function buildHistoryChain(
     }
 
     if (!text.trim()) {
-      for (const m of members) {
+      for (const m of sorted) {
         entries.push({
           chapterId: m.ch.id, title: m.ch.title, order: orderOf(m.ch, m.index), distance: m.distance,
           tier: rule.tier, text: '', chars: 0, pinned: false, included: false, reason: '暂无摘要',
+          nodeKey: nodeKey(0, orderOf(m.ch, m.index)), level: 0,
         })
       }
       return
     }
     const chars = text.length
     if (used + chars > opts.budget) {
-      pushEntry(members, rule, text, chars, false, '预算不足（更远）', source)
+      pushEntry(sorted, rule, text, chars, false, '预算不足（更远）', source, level, levelOverride !== undefined)
       return
     }
     used += chars
-    pushEntry(members, rule, text, chars, true, undefined, source)
+    pushEntry(sorted, rule, text, chars, true, undefined, source, level, levelOverride !== undefined)
   }
 
+  const flush = () => {
+    if (buf.length === 0) return
+    const members = [...buf].sort((a, b) => a.index - b.index)
+    buf = []
+    // 段内最近的一章决定档位（越近越详细）
+    emitGroup(members, members[members.length - 1]!.rule)
+  }
+
+  // 2) 用户锁定「用这一层」的节点：粗的优先占位
+  const lockedNodes = (opts.locked ?? [])
+    .map(parseNodeKey)
+    .filter((n): n is { level: number; startOrder: number } => n !== null)
+    .sort((a, b) => b.level - a.level)
+  for (const node of lockedNodes) {
+    const start = orderToIndex.get(node.startOrder)
+    if (start === undefined) continue
+    const rule = ruleForLevel(node.level, rules)
+    const span = spanOfLevel(node.level, groupSize)
+    const members: Slot[] = []
+    for (let i = start; i < start + span && i < ordered.length; i++) {
+      const it = ordered[i]!
+      if (pinned.has(it.ch.id) || excluded.has(it.ch.id) || assigned.has(it.ch.id)) continue
+      members.push({ ch: it.ch, index: it.index, distance: it.distance, rule, key: `locked:${nodeKey(node.level, node.startOrder)}` })
+    }
+    if (members.length === 0) continue
+    for (const m of members) assigned.add(m.ch.id)
+    emitGroup(members, rule, node.level)
+  }
+
+  // 3) 其余按“由近及远”填充，远处按章段合并
   for (const { ch, distance, index } of nearestFirst) {
-    if (pinned.has(ch.id)) continue
+    if (assigned.has(ch.id)) continue
     if (excluded.has(ch.id)) {
       entries.push({
         chapterId: ch.id, title: ch.title, order: orderOf(ch, index), distance,
         tier: tierForDistance(distance, rules).tier,
         text: '', chars: 0, pinned: false, included: false, reason: '已手动排除',
+        nodeKey: nodeKey(0, orderOf(ch, index)), level: 0,
       })
       continue
     }
@@ -450,6 +546,7 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
     budget: B.history,
     pinned: input.contextSettings?.pinnedChapters,
     excluded: input.contextSettings?.excludedChapters,
+    locked: input.contextSettings?.lockedNodes,
     groupSize: input.contextSettings?.groupSize,
     segments: input.segments,
   })

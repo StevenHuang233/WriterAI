@@ -46,7 +46,8 @@ describe('分层档位', () => {
     expect(tierForDistance(20).grouped).toBe(true)
     expect(tierForDistance(20).merge).toBe(1)
     expect(tierForDistance(30).merge).toBe(2)
-    expect(tierForDistance(100).merge).toBe(3)
+    // 1/2/4 而不是 1/2/3：粗层正好由两个细层组成，能排成严格的树
+    expect(tierForDistance(100).merge).toBe(4)
   })
 
   it('缺层级时自动降级取用', () => {

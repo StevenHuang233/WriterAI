@@ -133,15 +133,17 @@ const stmt = {
     disabled_blocks: string
     excluded_chapters: string
     pinned_chapters: string
+    locked_nodes: string
     group_size: number
   }>('SELECT * FROM project_context_settings WHERE project_id = ?'),
   upsertContextSettings: db.prepare(`
-    INSERT INTO project_context_settings (project_id, disabled_blocks, excluded_chapters, pinned_chapters, group_size, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO project_context_settings (project_id, disabled_blocks, excluded_chapters, pinned_chapters, locked_nodes, group_size, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(project_id) DO UPDATE SET
       disabled_blocks = excluded.disabled_blocks,
       excluded_chapters = excluded.excluded_chapters,
       pinned_chapters = excluded.pinned_chapters,
+      locked_nodes = excluded.locked_nodes,
       group_size = excluded.group_size,
       updated_at = excluded.updated_at
   `),
@@ -429,6 +431,8 @@ export interface ContextSettings {
   pinnedChapters: string[]
   /** 远段合段：每几章压缩成一段 */
   groupSize: number
+  /** 结构图里手动锁定「用这一层」的节点 key（如 L2:7） */
+  lockedNodes: string[]
 }
 
 /** 远段合段的默认章数 */
@@ -485,15 +489,22 @@ export function getContextSettings(projectId: string): ContextSettings {
         disabled_blocks: string
         excluded_chapters: string
         pinned_chapters: string
+        locked_nodes: string
         group_size: number
       }
     | undefined
-  if (!row) return { disabledBlocks: [], excludedChapters: [], pinnedChapters: [], groupSize: DEFAULT_GROUP_SIZE }
+  if (!row) {
+    return {
+      disabledBlocks: [], excludedChapters: [], pinnedChapters: [],
+      groupSize: DEFAULT_GROUP_SIZE, lockedNodes: [],
+    }
+  }
   return {
     disabledBlocks: parseList(row.disabled_blocks),
     excludedChapters: parseList(row.excluded_chapters),
     pinnedChapters: parseList(row.pinned_chapters),
     groupSize: clampGroupSize(row.group_size),
+    lockedNodes: parseList(row.locked_nodes).filter((k) => /^L\d+:\d+$/.test(k)),
   }
 }
 
@@ -504,12 +515,14 @@ export function saveContextSettings(projectId: string, patch: Partial<ContextSet
     excludedChapters: patch.excludedChapters ?? cur.excludedChapters,
     pinnedChapters: patch.pinnedChapters ?? cur.pinnedChapters,
     groupSize: patch.groupSize !== undefined ? clampGroupSize(patch.groupSize) : cur.groupSize,
+    lockedNodes: patch.lockedNodes ?? cur.lockedNodes,
   }
   stmt.upsertContextSettings.run(
     projectId,
     JSON.stringify(next.disabledBlocks),
     JSON.stringify(next.excludedChapters),
     JSON.stringify(next.pinnedChapters),
+    JSON.stringify(next.lockedNodes),
     next.groupSize,
     now(),
   )

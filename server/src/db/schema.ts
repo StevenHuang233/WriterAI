@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS project_context_settings (
   disabled_blocks TEXT NOT NULL DEFAULT '[]',
   excluded_chapters TEXT NOT NULL DEFAULT '[]',
   pinned_chapters TEXT NOT NULL DEFAULT '[]',
+  locked_nodes TEXT NOT NULL DEFAULT '[]',
   updated_at INTEGER NOT NULL
 );
 

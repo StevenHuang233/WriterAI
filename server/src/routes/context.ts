@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { buildSuggestMessages, BLOCK_LABELS, DEFAULT_TIER_RULES } from '../context/builder.js'
+import { buildContextTree } from '../context/tree.js'
 import {
   getChapter, getContextSettings, getProject, listChapterMetas, listLore, listRelationsFor,
   listSegmentTexts, saveContextSettings,
@@ -15,6 +16,7 @@ const SettingsSchema = z.object({
   excludedChapters: z.array(z.string().max(100)).max(1000).optional(),
   pinnedChapters: z.array(z.string().max(100)).max(200).optional(),
   groupSize: z.number().int().min(2).max(10).optional(),
+  lockedNodes: z.array(z.string().max(40).regex(/^L\d+:\d+$/)).max(200).optional(),
 })
 
 /** 当前上下文选择 */
@@ -102,6 +104,40 @@ contextRoute.get('/projects/:id/context-preview', (c) => {
     totalChars: built.totalChars,
     activeChapterId: activeId,
   })
+})
+
+/** 前情结构图：叶子是每章摘要，往上是各种粒度的多章压缩，并标出当前实际用到的节点 */
+contextRoute.get('/projects/:id/context-tree', (c) => {
+  const id = c.req.param('id')
+  const project = getProject(id)
+  if (!project) notFound('项目不存在')
+
+  const chapters = listChapterMetas(id)
+  const activeId = c.req.query('chapterId') ?? chapters[chapters.length - 1]?.id ?? ''
+  const settings = getContextSettings(id)
+  const idx = chapters.findIndex((ch) => ch.id === activeId)
+  const prev = idx > 0 ? chapters.slice(0, idx) : []
+
+  // 与提词时的预算保持一致（inline 模式的 history 预算）
+  const budget = Number(c.req.query('budget') ?? '') || 1800
+  const tree = buildContextTree({
+    prev: prev.map((ch) => ({
+      id: ch.id,
+      title: ch.title,
+      summary: ch.summary,
+      summaryBrief: ch.summary_brief,
+      summaryMicro: ch.summary_micro,
+      sortOrder: ch.sort_order,
+    })),
+    budget,
+    groupSize: settings.groupSize,
+    segments: listSegmentTexts(id, settings.groupSize),
+    pinned: settings.pinnedChapters,
+    excluded: settings.excludedChapters,
+    locked: settings.lockedNodes,
+  })
+
+  return c.json({ tree, settings, activeChapterId: activeId })
 })
 
 /** 供界面显示：某章节的三层摘要 */
