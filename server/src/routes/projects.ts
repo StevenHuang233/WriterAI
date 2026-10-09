@@ -5,6 +5,7 @@ import {
   listLore, listProjects, updateProject,
 } from '../db/repo.js'
 import { rebuildGlobalSummary } from '../jobs/summarizer.js'
+import { buildExport } from '../services/export.js'
 import { notFound, parseBody } from './util.js'
 import { toLoreDTO } from './lore.js'
 
@@ -60,21 +61,36 @@ projectsRoute.post('/projects/:id/rebuild-summary', async (c) => {
   return c.json({ global_summary: globalSummary })
 })
 
-projectsRoute.get('/projects/:id/export', (c) => {
+const ExportQuerySchema = z.object({
+  format: z.enum(['txt', 'md', 'html', 'docx', 'zip']).optional().default('txt'),
+  scope: z.enum(['all', 'chapter']).optional().default('all'),
+  chapterIds: z.string().max(5000).optional(),
+  titleTemplate: z.enum(['cn', 'num', 'dot', 'plain']).optional().default('cn'),
+  frontMatter: z.enum(['0', '1']).optional(),
+  splitLong: z.enum(['0', '1']).optional(),
+  download: z.enum(['0', '1']).optional(),
+})
+
+projectsRoute.get('/projects/:id/export', async (c) => {
   const id = c.req.param('id')
   const project = getProject(id)
   if (!project) notFound('项目不存在')
-  const format = c.req.query('format') === 'md' ? 'md' : 'txt'
-  const chapters = listChaptersFull(id)
-  let body: string
-  if (format === 'md') {
-    body = `# ${project.title}\n\n${project.synopsis ? `> ${project.synopsis}\n\n` : ''}${chapters.map((ch) => `## ${ch.title}\n\n${ch.content}`).join('\n\n')}\n`
-  } else {
-    body = `${project.title}\n\n${chapters.map((ch) => `${ch.title}\n\n${ch.content}`).join('\n\n')}\n`
-  }
-  const filename = encodeURIComponent(`${project.title}.${format}`)
-  return c.body(body, 200, {
-    'content-type': 'text/plain; charset=utf-8',
-    'content-disposition': `attachment; filename*=UTF-8''${filename}`,
+
+  const parsed = ExportQuerySchema.safeParse(Object.fromEntries(new URL(c.req.url).searchParams))
+  const q = parsed.success ? parsed.data : { format: 'txt' as const, scope: 'all' as const, titleTemplate: 'cn' as const }
+
+  const out = await buildExport(project, listChaptersFull(id), {
+    format: q.format,
+    scope: q.scope,
+    chapterIds: q.chapterIds ? q.chapterIds.split(',').filter(Boolean) : undefined,
+    titleTemplate: q.titleTemplate,
+    frontMatter: q.frontMatter === '1',
+    splitLong: q.splitLong === '1',
+  })
+
+  const encoded = encodeURIComponent(out.filename)
+  return c.body(out.body as never, 200, {
+    'content-type': out.mime,
+    'content-disposition': `${q.download === '0' ? 'inline' : 'attachment'}; filename*=UTF-8''${encoded}`,
   })
 })

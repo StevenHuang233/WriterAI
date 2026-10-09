@@ -10,6 +10,7 @@ import StatsPanel from './components/StatsPanel'
 import SearchPanel from './components/SearchPanel'
 import HistoryPanel from './components/HistoryPanel'
 import ImportDialog from './components/ImportDialog'
+import ExportDialog from './components/ExportDialog'
 import SettingsDialog from './components/SettingsDialog'
 import { apiExportUrl } from './api/client'
 import { getLastProjectId, useStore } from './store/useStore'
@@ -183,6 +184,7 @@ function EditorPage() {
   const [tab, setTab] = useState<RightTab>('lore')
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showExport, setShowExport] = useState(false)
 
   // Cmd/Ctrl+F 打开搜索面板（并阻止浏览器默认查找，避免抢走焦点）
   useEffect(() => {
@@ -233,12 +235,9 @@ function EditorPage() {
         >
           {showRightPanel ? '隐藏面板' : '显示面板'}
         </button>
-        <a className="btn" href={apiExportUrl(project.id, 'txt')} download>
-          导出 txt
-        </a>
-        <a className="btn" href={apiExportUrl(project.id, 'md')} download>
-          导出 md
-        </a>
+        <button className="btn btn-primary" onClick={() => setShowExport(true)} title="导出为 txt / Markdown / HTML / Word / 分章 ZIP">
+          导出 / 发布
+        </button>
         <button className="btn" onClick={() => setShowImport(true)} title="从 Markdown 或纯文本导入章节">
           导入
         </button>
@@ -286,6 +285,7 @@ function EditorPage() {
 
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
       {showImport && <ImportDialog onClose={() => setShowImport(false)} />}
+      {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
     </div>
   )
 }
