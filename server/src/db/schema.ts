@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS projects (
   synopsis TEXT NOT NULL DEFAULT '',
   global_summary TEXT NOT NULL DEFAULT '',
   style_note TEXT NOT NULL DEFAULT '',
+  style_profile TEXT NOT NULL DEFAULT '',
+  style_profile_at INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

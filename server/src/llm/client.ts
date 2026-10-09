@@ -67,6 +67,27 @@ export async function chatOnce(kind: LLMKind, messages: ChatMessage[], opts: Cha
   return res.choices?.[0]?.message?.content?.trim() ?? ''
 }
 
+/**
+ * 非流式对话（带空结果重试）。
+ * 推理模型可能把 token 预算全部用在“思考”上导致正文为空，
+ * 此时自动加大预算并降低思考力度重试，最多 3 次。
+ */
+export async function chatOnceRobust(kind: LLMKind, messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
+  let result = ''
+  for (let attempt = 0; attempt < 3 && !result.trim(); attempt++) {
+    const next: ChatOptions =
+      attempt === 0
+        ? opts
+        : {
+            ...opts,
+            maxTokens: Math.max(opts.maxTokens ?? 1000, 1000) * (attempt === 1 ? 3 : 6),
+            effort: 'low',
+          }
+    result = await chatOnce(kind, messages, next)
+  }
+  return result
+}
+
 /** 从模型输出中提取第一个 JSON 对象（容错解析） */
 export function extractJson(text: string): unknown {
   const start = text.indexOf('{')

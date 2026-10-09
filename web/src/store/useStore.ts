@@ -56,6 +56,8 @@ interface Store {
   lastLatencyMs: number | null
   lastSuggestError: string | null
   currentChapterChars: number
+  /** 上次提词实际使用的上下文字数（用于观察上下文是否膨胀） */
+  lastContextChars: number | null
   jumpTarget: JumpTarget | null
   /** 递增以强制编辑器重新加载（外部改动正文后使用） */
   editorReloadToken: number
@@ -88,7 +90,7 @@ interface Store {
   deleteLore: (id: string) => Promise<void>
 
   refreshJobs: () => Promise<void>
-  setUi: (patch: Partial<Pick<Store, 'saveState' | 'triggerState' | 'usedLoreNames' | 'lastLatencyMs' | 'lastSuggestError' | 'currentChapterChars' | 'loadError'>>) => void
+  setUi: (patch: Partial<Pick<Store, 'saveState' | 'triggerState' | 'usedLoreNames' | 'lastLatencyMs' | 'lastSuggestError' | 'currentChapterChars' | 'lastContextChars' | 'loadError'>>) => void
 }
 
 export interface JumpTarget {
@@ -117,6 +119,7 @@ export const useStore = create<Store>((set, get) => ({
   lastLatencyMs: null,
   lastSuggestError: null,
   currentChapterChars: 0,
+  lastContextChars: null,
   jumpTarget: null,
   editorReloadToken: 0,
 

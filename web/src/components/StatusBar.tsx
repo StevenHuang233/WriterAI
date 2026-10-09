@@ -15,6 +15,7 @@ export default function StatusBar() {
   const usedLoreNames = useStore((s) => s.usedLoreNames)
   const saveState = useStore((s) => s.saveState)
   const lastLatencyMs = useStore((s) => s.lastLatencyMs)
+  const lastContextChars = useStore((s) => s.lastContextChars)
   const lastSuggestError = useStore((s) => s.lastSuggestError)
   const chapters = useStore((s) => s.detail?.chapters)
   const activeChapter = useStore((s) => s.activeChapter)
@@ -38,6 +39,11 @@ export default function StatusBar() {
       </button>
       <span>{prefs.paused ? '自动提词已暂停' : TRIGGER_LABELS[triggerState] ?? triggerState}</span>
       {lastLatencyMs !== null && <span>上次 {lastLatencyMs}ms</span>}
+      {lastContextChars !== null && (
+        <span title="本次提词实际发给模型的上下文字数（上限固定，不随章节数增长）">
+          上下文 {lastContextChars} 字
+        </span>
+      )}
       {usedLoreNames.length > 0 && (
         <span className="min-w-0 truncate">
           本次设定：{usedLoreNames.join('、')}

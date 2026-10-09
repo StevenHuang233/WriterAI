@@ -9,6 +9,8 @@ export interface BuilderProject {
   synopsis: string
   globalSummary: string
   styleNote: string
+  /** 从正文自动总结的文风画像 */
+  styleProfile?: string
 }
 
 export interface BuilderChapter {
@@ -132,7 +134,16 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
     { key: 'prev', title: '前情摘要', text: summaryParts.join('\n'), trimOrder: 1, flex: true },
     { key: 'triggered', title: '相关设定', text: triggered.map(loreText).join('\n'), trimOrder: 5, flex: true },
     { key: 'outline', title: '本章大纲', text: input.outline?.trim() ?? '', trimOrder: 6, flex: true },
-    { key: 'style', title: '风格要求', text: input.project.styleNote.trim(), trimOrder: 99, flex: false },
+    {
+      key: 'style',
+      title: '风格要求',
+      // 手写指令在前，自动总结的文风画像在后（两者都会影响生成）
+      text: [input.project.styleNote.trim(), input.project.styleProfile?.trim()]
+        .filter((s) => s)
+        .join('\n'),
+      trimOrder: 99,
+      flex: false,
+    },
     {
       key: 'suffix',
       title: '光标后文',

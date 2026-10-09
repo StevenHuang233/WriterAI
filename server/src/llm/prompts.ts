@@ -26,6 +26,24 @@ export function suggestSystemPrompt(mode: 'inline' | 'continue', length: Suggest
 5. 如果给出了【光标后文】，续写必须能自然衔接到它。`
 }
 
+/**
+ * 文风分析：从作者自己的正文里总结文风特征，供后续提词模仿。
+ * 输出 JSON + 一段可直接放进提示词的风格指令（note）。
+ */
+export function analyzeStylePrompt(sample: string): ChatMessage[] {
+  return [
+    {
+      role: 'user',
+      content: `下面是同一位作者写的小说正文片段。请分析这位作者的文风，供之后的续写模仿。
+只输出 JSON，格式：
+{"perspective":"叙述视角与人称","sentence":"句式与节奏特征","wording":"用词倾向","dialogue":"对话与引号用法","rhetoric":"常用意象与修辞","avoid":"应当避免的写法","note":"可直接作为写作指令的风格要求，150～250 字，用中文，写成给模型的指令语气"}
+不要输出 JSON 以外的任何内容。
+
+${sample}`,
+    },
+  ]
+}
+
 /** 章节摘要 */
 export function chapterSummaryPrompt(text: string): ChatMessage[] {
   return [

@@ -11,6 +11,9 @@ export interface Project {
   synopsis: string
   global_summary: string
   style_note: string
+  /** 从正文自动总结的文风画像 */
+  style_profile: string
+  style_profile_at: number
   created_at: number
   updated_at: number
 }

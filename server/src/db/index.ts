@@ -17,3 +17,11 @@ const chapterCols = db.prepare('PRAGMA table_info(chapters)').all() as Array<{ n
 if (!chapterCols.some((c) => c.name === 'outline')) {
   db.exec("ALTER TABLE chapters ADD COLUMN outline TEXT NOT NULL DEFAULT ''")
 }
+
+const projectCols = db.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>
+if (!projectCols.some((c) => c.name === 'style_profile')) {
+  db.exec("ALTER TABLE projects ADD COLUMN style_profile TEXT NOT NULL DEFAULT ''")
+}
+if (!projectCols.some((c) => c.name === 'style_profile_at')) {
+  db.exec('ALTER TABLE projects ADD COLUMN style_profile_at INTEGER NOT NULL DEFAULT 0')
+}

@@ -35,7 +35,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export const apiListProjects = () => api<ProjectMeta[]>('/api/projects')
 export const apiCreateProject = (title: string) => api<ProjectMeta>('/api/projects', { method: 'POST', body: JSON.stringify({ title }) })
 export const apiGetProject = (id: string) => api<ProjectDetail>(`/api/projects/${id}`)
-export const apiPatchProject = (id: string, patch: Partial<Pick<ProjectDetail['project'], 'title' | 'synopsis' | 'style_note' | 'global_summary'>>) =>
+export const apiPatchProject = (id: string, patch: Partial<Pick<ProjectDetail['project'], 'title' | 'synopsis' | 'style_note' | 'style_profile' | 'global_summary'>>) =>
   api<ProjectDetail['project']>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
 export const apiDeleteProject = (id: string) => api<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' })
 export const apiRebuildSummary = (id: string) => api<{ global_summary: string }>(`/api/projects/${id}/rebuild-summary`, { method: 'POST' })
@@ -85,6 +85,19 @@ export const apiSettings = () => api<SettingsInfo>('/api/settings')
 export const apiJobs = () => api<JobInfo[]>('/api/jobs')
 
 // ---------- 统计 / 历史 / 搜索 / 导入 ----------
+
+export interface StyleProfile {
+  perspective: string
+  sentence: string
+  wording: string
+  dialogue: string
+  rhetoric: string
+  avoid: string
+  note: string
+}
+
+export const apiAnalyzeStyle = (projectId: string) =>
+  api<{ ok: boolean; profile: StyleProfile; sampleChars: number }>(`/api/projects/${projectId}/analyze-style`, { method: 'POST' })
 
 export interface StatsResult {
   today: number

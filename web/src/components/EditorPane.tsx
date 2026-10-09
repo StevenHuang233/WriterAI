@@ -125,7 +125,7 @@ export default function EditorPane() {
           },
           {
             signal,
-            onMeta: (meta) => st.setUi({ usedLoreNames: meta.usedLoreNames }),
+            onMeta: (meta) => st.setUi({ usedLoreNames: meta.usedLoreNames, lastContextChars: meta.contextChars }),
             onDelta: (t) => {
               acc += t
               // 光标已移动则不再显示

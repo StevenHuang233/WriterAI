@@ -7,6 +7,10 @@ export interface ProjectRow {
   synopsis: string
   global_summary: string
   style_note: string
+  /** 从正文自动总结出的文风画像（可直接参与的提词指令） */
+  style_profile: string
+  /** 文风画像生成时间 */
+  style_profile_at: number
   created_at: number
   updated_at: number
 }
@@ -143,6 +147,8 @@ export function createProject(title: string): ProjectRow {
     synopsis: '',
     global_summary: '',
     style_note: '',
+    style_profile: '',
+    style_profile_at: 0,
     created_at: t,
     updated_at: t,
   }
@@ -156,6 +162,8 @@ export interface ProjectPatch {
   synopsis?: string
   global_summary?: string
   style_note?: string
+  style_profile?: string
+  style_profile_at?: number
 }
 
 export function updateProject(id: string, patch: ProjectPatch): void {
@@ -163,7 +171,7 @@ export function updateProject(id: string, patch: ProjectPatch): void {
   if (!p) return
   const sets: string[] = []
   const params: unknown[] = []
-  for (const key of ['title', 'synopsis', 'global_summary', 'style_note'] as const) {
+  for (const key of ['title', 'synopsis', 'global_summary', 'style_note', 'style_profile', 'style_profile_at'] as const) {
     const v = patch[key]
     if (v !== undefined) {
       sets.push(`${key} = ?`)

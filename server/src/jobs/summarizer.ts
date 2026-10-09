@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { env } from '../env.js'
-import { chatOnce, extractJson } from '../llm/client.js'
+import { chatOnceRobust, extractJson } from '../llm/client.js'
 import {
   characterStatePrompt, chapterSummaryPrompt, incrementalChapterSummaryPrompt,
   mergeGlobalSummaryPrompt, rebuildGlobalSummaryPrompt,
@@ -92,7 +92,7 @@ async function runJob(chapterId: string): Promise<void> {
       const messages = canIncremental
         ? incrementalChapterSummaryPrompt(ch.summary, newPart)
         : chapterSummaryPrompt(ch.content)
-      const s = await chatOnce('strong', messages, {
+      const s = await chatOnceRobust('strong', messages, {
         maxTokens: 2000,
         temperature: 0.3,
         effort: env.strong.effort || undefined,
@@ -111,7 +111,7 @@ async function runJob(chapterId: string): Promise<void> {
 
     // 2. 全书梗概滚动合并
     if (summary.trim()) {
-      const merged = await chatOnce(
+      const merged = await chatOnceRobust(
         'strong',
         mergeGlobalSummaryPrompt(project.global_summary, ch.title, summary),
         { maxTokens: 2500, temperature: 0.3, effort: env.strong.effort || undefined },
@@ -137,7 +137,7 @@ async function runJob(chapterId: string): Promise<void> {
         .map((h) => characters.find((c) => c.id === h.id))
         .filter((c): c is NonNullable<typeof c> => Boolean(c))
       if (present.length > 0) {
-        const raw = await chatOnce(
+        const raw = await chatOnceRobust(
           'strong',
           characterStatePrompt(ch.title, summary, present.map((c) => ({
             name: c.name,
@@ -195,7 +195,7 @@ export async function rebuildGlobalSummary(projectId: string): Promise<string> {
   const chapters = listChaptersFull(projectId)
   const parts = chapters.filter((c) => c.summary.trim()).map((c) => `第${c.sort_order}章《${c.title}》：${c.summary.trim()}`)
   if (parts.length === 0) throw new Error('还没有任何章节摘要，请先生成摘要')
-  const text = await chatOnce('strong', rebuildGlobalSummaryPrompt(parts), { maxTokens: 2500, temperature: 0.3, effort: env.strong.effort || undefined })
+  const text = await chatOnceRobust('strong', rebuildGlobalSummaryPrompt(parts), { maxTokens: 2500, temperature: 0.3, effort: env.strong.effort || undefined })
   if (!text) throw new Error('模型没有返回内容')
   updateProject(projectId, { global_summary: text })
   return text

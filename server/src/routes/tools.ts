@@ -2,11 +2,15 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import {
   createChapter, createSnapshot, getChapter, getProject, getSnapshot, listChapterMetas,
-  listChaptersFull, listSnapshots, listStats, recordStat, todayString, updateChapter, writingStreak,
+  listChaptersFull, listSnapshots, listStats, recordStat, todayString, updateChapter, updateProject,
+  writingStreak,
   type ChapterRow,
 } from '../db/repo.js'
 import { searchChapters, replaceInText } from '../services/search.js'
 import { parseImport } from '../services/import.js'
+import { analyzeStylePrompt } from '../llm/prompts.js'
+import { chatOnceRobust, extractJson } from '../llm/client.js'
+import { env } from '../env.js'
 import { badRequest, notFound, parseBody } from './util.js'
 
 export const toolsRoute = new Hono()
@@ -31,6 +35,74 @@ toolsRoute.get('/projects/:id/stats', (c) => {
     chapters,
     total: chapters.reduce((s, ch) => s + ch.chars, 0),
   })
+})
+
+// ---------- 文风自动总结 ----------
+
+const STYLE_SAMPLE_CHARS = 8000
+const STYLE_MIN_CHARS = 300
+
+const StyleProfileSchema = z.object({
+  perspective: z.string().max(200).optional().default(''),
+  sentence: z.string().max(300).optional().default(''),
+  wording: z.string().max(300).optional().default(''),
+  dialogue: z.string().max(300).optional().default(''),
+  rhetoric: z.string().max(300).optional().default(''),
+  avoid: z.string().max(300).optional().default(''),
+  note: z.string().max(1000).optional().default(''),
+})
+
+toolsRoute.post('/projects/:id/analyze-style', async (c) => {
+  const id = c.req.param('id')
+  const project = getProject(id)
+  if (!project) notFound('项目不存在')
+
+  // 取最近正文作为样本（从最新章节往前取，够 8000 字为止）
+  const chapters = [...listChaptersFull(id)].sort((a, b) => b.sort_order - a.sort_order)
+  let sample = ''
+  for (const ch of chapters) {
+    sample = ch.content.slice(-STYLE_SAMPLE_CHARS) + sample
+    if (sample.length >= STYLE_SAMPLE_CHARS) break
+  }
+  sample = sample.slice(-STYLE_SAMPLE_CHARS)
+
+  const totalChars = chapters.reduce((s, ch) => s + ch.content.length, 0)
+  if (sample.trim().length < STYLE_MIN_CHARS) {
+    badRequest(`正文太少（当前 ${totalChars} 字），至少需要 ${STYLE_MIN_CHARS} 字才能总结文风`)
+  }
+
+  const raw = await chatOnceRobust('strong', analyzeStylePrompt(sample), {
+    maxTokens: 1500,
+    temperature: 0.3,
+    effort: env.strong.effort || undefined,
+  })
+  const parsed = StyleProfileSchema.safeParse(extractJson(raw) ?? {})
+  if (!parsed.success) badRequest('模型没有返回可解析的文风结果，请稍后再试')
+
+  const profile = parsed.data
+  const note0 = profile.note.trim()
+  const hasFields = ['perspective', 'sentence', 'wording', 'dialogue', 'rhetoric', 'avoid'].some(
+    (k) => (profile[k as keyof typeof profile] as string)?.trim(),
+  )
+  if (!note0 && !hasFields) badRequest('模型没有返回可用的文风结果，请稍后重试')
+
+  const note =
+    profile.note.trim() ||
+    [
+      profile.perspective && `视角：${profile.perspective}`,
+      profile.sentence && `句式：${profile.sentence}`,
+      profile.wording && `用词：${profile.wording}`,
+      profile.dialogue && `对话：${profile.dialogue}`,
+      profile.rhetoric && `意象：${profile.rhetoric}`,
+      profile.avoid && `避免：${profile.avoid}`,
+    ]
+      .filter(Boolean)
+      .join('；')
+
+  if (!note.trim()) badRequest('模型没有返回风格指令，请重试')
+
+  updateProject(id, { style_profile: note, style_profile_at: Date.now() })
+  return c.json({ ok: true, profile: { ...profile, note }, sampleChars: sample.length })
 })
 
 // ---------- 版本历史 ----------

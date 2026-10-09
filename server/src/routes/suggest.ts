@@ -49,6 +49,7 @@ suggestRoute.post('/suggest', async (c) => {
       synopsis: project.synopsis,
       globalSummary: project.global_summary,
       styleNote: project.style_note,
+      styleProfile: project.style_profile,
     },
     chapters: chapters.map((ch) => ({ id: ch.id, title: ch.title, summary: ch.summary })),
     currentChapterId: body.chapterId,
