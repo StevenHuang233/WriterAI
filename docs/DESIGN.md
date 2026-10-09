@@ -466,7 +466,27 @@ git push -u origin main
 
 ---
 
-## 13. 写作辅助功能（已实现）
+## 13. 模型运行时配置（已实现）
+
+- `server/src/llm/runtime-config.ts`：配置存 `data/llm-config.json`（chmod 600）
+- 解析顺序：界面配置覆盖 `.env`；**空字符串视为未填写并回退到 `.env`**
+  （否则用户只改模型名保存就会把密钥清空——这是实测发现的 bug）
+- `resetClients()` 清空 OpenAI 客户端缓存，保存后立即生效；`getClient/params` 每次重新解析配置
+- 路由：`GET/PUT /api/settings`、`POST /api/settings/reset|test|models`
+  - test：真实调用一次（max_tokens 60）并返回耗时
+  - models：反向代理 `{baseURL}/models`，仅允许 http/https，便于用户选模型
+- 安全：密钥 GET 时打码；保存时打码值不覆盖原值；接口返回中不含明文密钥
+
+## 13.1 桌面版（Electron）
+
+- `app/main.js`：Electron 只做窗口；用系统 Node spawn `server/dist/index.js`，
+  轮询 `/api/settings` 等待就绪后 `loadURL`
+  （原生模块 better-sqlite3 与 Electron 内置 Node 的 ABI 不匹配，故不直接在 Electron 内跑后端）
+- `findNode()`：`node` → `/usr/local/bin/node` → `/opt/homebrew/bin/node` 兜底（Finder 启动时 PATH 很短）
+- 退出时 kill 后端；窗口关闭即退出
+- 脚本：根 `npm run app`（构建 + 启动），`app/` 内 `npm run dist|dmg`（electron-builder）
+
+## 14. 写作辅助功能（已实现）
 
 - **写作统计**：`writing_stats(project_id, chapter_id, day, delta)`；章节保存时按字数差记录增量，
   `GET /api/projects/:id/stats` 返回今日字数、连续天数（当天未写则从昨天算起）、近 N 天、各章字数

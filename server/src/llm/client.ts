@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
-import { env, type LLMKind } from '../env.js'
+import { type LLMKind } from '../env.js'
+import { resolveLLM } from './runtime-config.js'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -17,9 +18,16 @@ export interface ChatOptions {
 
 const cache: Partial<Record<LLMKind, OpenAI>> = {}
 
+/** 配置变更后调用，使新配置立即生效 */
+export function resetClients(): void {
+  cache.fast = undefined
+  cache.strong = undefined
+}
+
 export function getClient(kind: LLMKind): OpenAI {
   if (!cache[kind]) {
-    const c = env[kind]
+    // 每次都重新解析：界面配置可覆盖 .env
+    const c = resolveLLM(kind).config
     cache[kind] = new OpenAI({
       baseURL: c.baseURL,
       // Ollama 等本地服务无鉴权，占位即可
@@ -33,7 +41,7 @@ export function getClient(kind: LLMKind): OpenAI {
 
 function params(kind: LLMKind, messages: ChatMessage[], opts: ChatOptions) {
   return {
-    model: env[kind].model,
+    model: resolveLLM(kind).config.model,
     messages,
     temperature: opts.temperature ?? 0.8,
     ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),

@@ -7,5 +7,6 @@ data/*.db-shm
 data/*.db-wal
 data/*.db-journal
 data/sync-config.json
+data/llm-config.json
 *.log
 .DS_Store

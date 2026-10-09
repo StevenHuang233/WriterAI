@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { SUGGEST_LENGTH_LABELS, type SuggestLength } from '../types'
 import SyncPanel from './SyncPanel'
+import ModelPanel from './ModelPanel'
 
 const LENGTH_KEYS: SuggestLength[] = ['short', 'medium', 'long']
 
@@ -13,7 +14,7 @@ export default function SettingsDialog({ onClose }: Props) {
   const prefs = useStore((s) => s.prefs)
   const setPrefs = useStore((s) => s.setPrefs)
   const settingsInfo = useStore((s) => s.settingsInfo)
-  const [tab, setTab] = useState<'general' | 'sync'>('general')
+  const [tab, setTab] = useState<'general' | 'model' | 'sync'>('general')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -30,7 +31,7 @@ export default function SettingsDialog({ onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="panel w-[440px] p-5"
+        className="panel max-h-[88vh] w-[440px] overflow-y-auto p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -44,6 +45,9 @@ export default function SettingsDialog({ onClose }: Props) {
           <span className={`tab ${tab === 'general' ? 'active' : ''}`} onClick={() => setTab('general')}>
             通用
           </span>
+          <span className={`tab ${tab === 'model' ? 'active' : ''}`} onClick={() => setTab('model')}>
+            模型
+          </span>
           <span className={`tab ${tab === 'sync' ? 'active' : ''}`} onClick={() => setTab('sync')}>
             云同步
           </span>
@@ -51,6 +55,8 @@ export default function SettingsDialog({ onClose }: Props) {
 
         {tab === 'sync' ? (
           <SyncPanel />
+        ) : tab === 'model' ? (
+          <ModelPanel />
         ) : (
           <>
         <div className="mb-4">

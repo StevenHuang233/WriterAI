@@ -6,12 +6,14 @@
   "description": "小说提词器：基于上下文、历史压缩与设定库的实时写作提示",
   "workspaces": [
     "server",
-    "web"
+    "web",
+    "app"
   ],
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,green \"npm:dev -w server\" \"npm:dev -w web\"",
     "build": "npm run build -w web && npm run build -w server",
     "start": "npm run start -w server",
+    "app": "npm run build && npm run start -w @writerai/app",
     "test": "npm test -w server && npm test -w web",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web"
   },

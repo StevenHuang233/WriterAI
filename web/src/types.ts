@@ -70,9 +70,19 @@ export interface ProjectDetail {
   lore: LoreEntry[]
 }
 
+export interface ModelConfigView {
+  baseURL: string
+  model: string
+  effort: string
+  apiKey: string
+  configured: boolean
+  source: 'env' | 'ui'
+  usingUI: boolean
+}
+
 export interface SettingsInfo {
-  fast: { model: string; configured: boolean }
-  strong: { model: string; configured: boolean }
+  fast: ModelConfigView
+  strong: ModelConfigView
 }
 
 export interface JobInfo {

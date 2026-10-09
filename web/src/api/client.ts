@@ -1,5 +1,5 @@
 import type {
-  Chapter, JobInfo, LoreEntry, ProjectDetail, ProjectMeta, SettingsInfo,
+  Chapter, JobInfo, LoreEntry, ProjectDetail, ProjectMeta,
   SuggestLength, SuggestMeta, SuggestMode,
 } from '../types'
 
@@ -81,7 +81,33 @@ export const apiDeleteLore = (id: string) => api<{ ok: boolean }>(`/api/lore/${i
 
 // ---------- 其他 ----------
 
-export const apiSettings = () => api<SettingsInfo>('/api/settings')
+export interface ModelConfigView {
+  baseURL: string
+  model: string
+  effort: string
+  apiKey: string
+  configured: boolean
+  source: 'env' | 'ui'
+  usingUI: boolean
+}
+
+export const apiSettings = () => api<{ fast: ModelConfigView; strong: ModelConfigView }>('/api/settings')
+export const apiSaveSettings = (body: {
+  fast?: { baseURL?: string; apiKey?: string; model?: string; effort?: string }
+  strong?: { baseURL?: string; apiKey?: string; model?: string; effort?: string }
+}) => api<{ ok: boolean }>('/api/settings', { method: 'PUT', body: JSON.stringify(body) })
+export const apiResetSettings = (kind?: 'fast' | 'strong') =>
+  api<{ ok: boolean }>('/api/settings/reset', { method: 'POST', body: JSON.stringify(kind ? { kind } : {}) })
+export const apiTestSettings = (kind: 'fast' | 'strong') =>
+  api<{ ok: boolean; message: string; latencyMs?: number }>('/api/settings/test', {
+    method: 'POST',
+    body: JSON.stringify({ kind }),
+  })
+export const apiListModels = (kind: 'fast' | 'strong') =>
+  api<{ ok: boolean; models: string[]; message: string }>('/api/settings/models', {
+    method: 'POST',
+    body: JSON.stringify({ kind }),
+  })
 export const apiJobs = () => api<JobInfo[]>('/api/jobs')
 
 // ---------- 人物模块 ----------
