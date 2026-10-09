@@ -123,6 +123,32 @@ const stmt = {
   statsByDay: db.prepare<[string], { day: string; chars: number }>(
     'SELECT day, SUM(delta) AS chars FROM writing_stats WHERE project_id = ? GROUP BY day ORDER BY day',
   ),
+
+  getProfile: db.prepare<[string], CharacterProfileRow>('SELECT * FROM character_profiles WHERE lore_id = ?'),
+  listProfiles: db.prepare<[string], CharacterProfileRow>(
+    'SELECT * FROM character_profiles WHERE project_id = ?',
+  ),
+  upsertProfile: db.prepare(`
+    INSERT INTO character_profiles (lore_id, project_id, gender, age, role, appearance, personality, motivation, catchphrase, avatar, color, updated_at)
+    VALUES (@lore_id, @project_id, @gender, @age, @role, @appearance, @personality, @motivation, @catchphrase, @avatar, @color, @updated_at)
+    ON CONFLICT(lore_id) DO UPDATE SET
+      gender = excluded.gender, age = excluded.age, role = excluded.role, appearance = excluded.appearance,
+      personality = excluded.personality, motivation = excluded.motivation, catchphrase = excluded.catchphrase,
+      avatar = excluded.avatar, color = excluded.color, updated_at = excluded.updated_at
+  `),
+  listRelations: db.prepare<[string], CharacterRelationRow>(
+    'SELECT * FROM character_relations WHERE project_id = ? ORDER BY updated_at DESC',
+  ),
+  insertRelation: db.prepare(
+    'INSERT INTO character_relations (id, project_id, a_lore_id, b_lore_id, label, updated_at) VALUES (@id, @project_id, @a_lore_id, @b_lore_id, @label, @updated_at)',
+  ),
+  deleteRelation: db.prepare('DELETE FROM character_relations WHERE id = ?'),
+  insertStateHistory: db.prepare(
+    'INSERT INTO character_state_history (id, lore_id, chapter_id, chapter_title, state, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ),
+  listStateHistory: db.prepare<[string], CharacterStateRow>(
+    'SELECT * FROM character_state_history WHERE lore_id = ? ORDER BY created_at DESC',
+  ),
 }
 
 function now(): number {
@@ -352,6 +378,115 @@ export function deleteLore(id: string): void {
 
 export function logSuggestion(projectId: string, chapterId: string, outcome: 'accepted' | 'partial' | 'dismissed', latencyMs?: number): void {
   stmt.insertSuggestionLog.run(randomUUID(), projectId, chapterId, outcome, latencyMs ?? null, now())
+}
+
+// ---------- 人物模块 ----------
+
+export interface CharacterProfileRow {
+  lore_id: string
+  project_id: string
+  gender: string
+  age: string
+  role: string
+  appearance: string
+  personality: string
+  motivation: string
+  catchphrase: string
+  avatar: string
+  color: string
+  updated_at: number
+}
+
+export interface CharacterRelationRow {
+  id: string
+  project_id: string
+  a_lore_id: string
+  b_lore_id: string
+  label: string
+  updated_at: number
+}
+
+export interface CharacterStateRow {
+  id: string
+  lore_id: string
+  chapter_id: string
+  chapter_title: string
+  state: string
+  created_at: number
+}
+
+export interface CharacterProfilePatch {
+  gender?: string
+  age?: string
+  role?: string
+  appearance?: string
+  personality?: string
+  motivation?: string
+  catchphrase?: string
+  avatar?: string
+  color?: string
+}
+
+export function getCharacterProfile(loreId: string): CharacterProfileRow | undefined {
+  return stmt.getProfile.get(loreId)
+}
+
+export function listCharacterProfiles(projectId: string): CharacterProfileRow[] {
+  return stmt.listProfiles.all(projectId)
+}
+
+export function upsertCharacterProfile(loreId: string, projectId: string, patch: CharacterProfilePatch): void {
+  const prev = stmt.getProfile.get(loreId)
+  const row: CharacterProfileRow = {
+    lore_id: loreId,
+    project_id: projectId,
+    gender: patch.gender ?? prev?.gender ?? '',
+    age: patch.age ?? prev?.age ?? '',
+    role: patch.role ?? prev?.role ?? '',
+    appearance: patch.appearance ?? prev?.appearance ?? '',
+    personality: patch.personality ?? prev?.personality ?? '',
+    motivation: patch.motivation ?? prev?.motivation ?? '',
+    catchphrase: patch.catchphrase ?? prev?.catchphrase ?? '',
+    avatar: patch.avatar ?? prev?.avatar ?? '',
+    color: patch.color ?? prev?.color ?? '',
+    updated_at: now(),
+  }
+  stmt.upsertProfile.run(row)
+}
+
+export function listRelations(projectId: string): CharacterRelationRow[] {
+  return stmt.listRelations.all(projectId)
+}
+
+export function listRelationsFor(projectId: string, ids: string[]): CharacterRelationRow[] {
+  if (ids.length === 0) return []
+  const set = new Set(ids)
+  return listRelations(projectId).filter((r) => set.has(r.a_lore_id) || set.has(r.b_lore_id))
+}
+
+export function createRelation(projectId: string, a: string, b: string, label: string): CharacterRelationRow {
+  const row: CharacterRelationRow = {
+    id: randomUUID(),
+    project_id: projectId,
+    a_lore_id: a,
+    b_lore_id: b,
+    label,
+    updated_at: now(),
+  }
+  stmt.insertRelation.run(row)
+  return row
+}
+
+export function deleteRelation(id: string): void {
+  stmt.deleteRelation.run(id)
+}
+
+export function addStateHistory(loreId: string, chapterId: string, chapterTitle: string, state: string): void {
+  stmt.insertStateHistory.run(randomUUID(), loreId, chapterId, chapterTitle, state, now())
+}
+
+export function listStateHistory(loreId: string): CharacterStateRow[] {
+  return stmt.listStateHistory.all(loreId)
 }
 
 // ---------- 版本历史 ----------

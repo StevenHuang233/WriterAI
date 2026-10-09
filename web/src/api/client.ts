@@ -84,6 +84,68 @@ export const apiDeleteLore = (id: string) => api<{ ok: boolean }>(`/api/lore/${i
 export const apiSettings = () => api<SettingsInfo>('/api/settings')
 export const apiJobs = () => api<JobInfo[]>('/api/jobs')
 
+// ---------- 人物模块 ----------
+
+export interface CharacterProfile {
+  lore_id: string
+  project_id: string
+  gender: string
+  age: string
+  role: string
+  appearance: string
+  personality: string
+  motivation: string
+  catchphrase: string
+  avatar: string
+  color: string
+  updated_at: number
+}
+
+export interface CharacterItem extends LoreEntry {
+  profile: CharacterProfile | null
+}
+
+export interface CharacterRelation {
+  id: string
+  project_id: string
+  a_lore_id: string
+  b_lore_id: string
+  label: string
+  updated_at: number
+}
+
+export interface AppearanceInfo {
+  total: number
+  chapters: { chapterId: string; title: string; sortOrder: number; count: number }[]
+}
+
+export interface StateHistoryItem {
+  id: string
+  lore_id: string
+  chapter_id: string
+  chapter_title: string
+  state: string
+  created_at: number
+}
+
+export const apiCharacters = (projectId: string) =>
+  api<{ characters: CharacterItem[]; relations: CharacterRelation[] }>(`/api/projects/${projectId}/characters`)
+export const apiPatchProfile = (loreId: string, patch: Partial<Omit<CharacterProfile, 'lore_id' | 'project_id' | 'updated_at'>>) =>
+  api<CharacterProfile>(`/api/characters/${loreId}/profile`, { method: 'PATCH', body: JSON.stringify(patch) })
+export const apiAppearances = (loreId: string) => api<AppearanceInfo>(`/api/characters/${loreId}/appearances`)
+export const apiStateHistory = (loreId: string) => api<StateHistoryItem[]>(`/api/characters/${loreId}/history`)
+export const apiAddStateHistory = (loreId: string, state: string) =>
+  api<StateHistoryItem[]>(`/api/characters/${loreId}/history`, { method: 'POST', body: JSON.stringify({ state }) })
+export const apiCreateRelation = (projectId: string, a: string, b: string, label: string) =>
+  api<CharacterRelation>(`/api/projects/${projectId}/relations`, { method: 'POST', body: JSON.stringify({ a, b, label }) })
+export const apiDeleteRelation = (id: string) => api<{ ok: boolean }>(`/api/relations/${id}`, { method: 'DELETE' })
+export const apiDetectCharacters = (projectId: string) =>
+  api<{ ok: boolean; created: string[]; sampleChars: number }>(`/api/projects/${projectId}/characters/detect`, { method: 'POST' })
+export const apiFillCharacter = (loreId: string) =>
+  api<{ ok: boolean; profile: CharacterProfile; sampleChars: number }>(`/api/characters/${loreId}/fill`, { method: 'POST' })
+export const apiInferRelations = (loreId: string) =>
+  api<{ ok: boolean; added: string[] }>(`/api/characters/${loreId}/infer-relations`, { method: 'POST' })
+
 // ---------- 统计 / 历史 / 搜索 / 导入 ----------
 
 export interface StyleProfile {

@@ -40,6 +40,42 @@ CREATE TABLE IF NOT EXISTS lore_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_lore_project ON lore_entries(project_id);
 
+CREATE TABLE IF NOT EXISTS character_profiles (
+  lore_id TEXT PRIMARY KEY REFERENCES lore_entries(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
+  gender TEXT NOT NULL DEFAULT '',
+  age TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT '',
+  appearance TEXT NOT NULL DEFAULT '',
+  personality TEXT NOT NULL DEFAULT '',
+  motivation TEXT NOT NULL DEFAULT '',
+  catchphrase TEXT NOT NULL DEFAULT '',
+  avatar TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_profiles_project ON character_profiles(project_id);
+
+CREATE TABLE IF NOT EXISTS character_relations (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  a_lore_id TEXT NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+  b_lore_id TEXT NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_relations_project ON character_relations(project_id);
+
+CREATE TABLE IF NOT EXISTS character_state_history (
+  id TEXT PRIMARY KEY,
+  lore_id TEXT NOT NULL REFERENCES lore_entries(id) ON DELETE CASCADE,
+  chapter_id TEXT NOT NULL DEFAULT '',
+  chapter_title TEXT NOT NULL DEFAULT '',
+  state TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_state_history ON character_state_history(lore_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS chapter_snapshots (
   id TEXT PRIMARY KEY,
   chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,

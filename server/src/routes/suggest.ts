@@ -4,11 +4,30 @@ import { z } from 'zod'
 import { env, llmReady } from '../env.js'
 import { createChatStream } from '../llm/client.js'
 import { buildSuggestMessages } from '../context/builder.js'
-import { getChapter, getProject, listChapterMetas, listLore, logSuggestion } from '../db/repo.js'
+import {
+  getChapter, getProject, listChapterMetas, listLore, listRelationsFor, logSuggestion,
+} from '../db/repo.js'
 import { safeParseAliases } from './lore.js'
 import { notFound, parseBody } from './util.js'
 
 export const suggestRoute = new Hono()
+
+/** 本次出场人物之间的关系，拼成「甲 — 乙：关系」 */
+function relationLines(projectId: string, loreIds: string[]): string[] {
+  if (loreIds.length === 0) return []
+  const characters = listLore(projectId).filter((l) => l.type === 'character')
+  const idToName = new Map(characters.map((c) => [c.id, c.name]))
+  const set = new Set(loreIds.filter((id) => idToName.has(id)))
+  if (set.size === 0) return []
+  return listRelationsFor(projectId, [...set])
+    .map((r) => {
+      const a = idToName.get(r.a_lore_id)
+      const b = idToName.get(r.b_lore_id)
+      if (!a || !b) return ''
+      return `${a} — ${b}：${r.label}`
+    })
+    .filter(Boolean)
+}
 
 const SuggestSchema = z.object({
   projectId: z.string().min(1),
@@ -44,7 +63,7 @@ suggestRoute.post('/suggest', async (c) => {
   const chapters = listChapterMetas(body.projectId)
   const lore = listLore(body.projectId)
 
-  const built = buildSuggestMessages({
+  const buildInput = {
     project: {
       synopsis: project.synopsis,
       globalSummary: project.global_summary,
@@ -71,7 +90,12 @@ suggestRoute.post('/suggest', async (c) => {
     mode: body.mode,
     length: body.length ?? 'medium',
     outline: chapter.outline,
-  })
+  }
+
+  // 先构建一次拿到本次出场人物，再把他们的关系加入上下文重建
+  const builtBase = buildSuggestMessages(buildInput)
+  const relations = relationLines(body.projectId, builtBase.usedLoreIds)
+  const built = relations.length > 0 ? buildSuggestMessages({ ...buildInput, relations }) : builtBase
 
   // 推理模型的思考 token 会占用输出预算，因此按期望长度给不同的 max_tokens
   const length = body.length ?? 'medium'

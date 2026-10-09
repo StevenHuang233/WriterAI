@@ -5,6 +5,7 @@ import LorePanel from './components/LorePanel'
 import StatusBar from './components/StatusBar'
 import StylePanel from './components/StylePanel'
 import SummaryPanel from './components/SummaryPanel'
+import CharacterPanel from './components/CharacterPanel'
 import OutlinePanel from './components/OutlinePanel'
 import StatsPanel from './components/StatsPanel'
 import SearchPanel from './components/SearchPanel'
@@ -145,9 +146,10 @@ function ProjectListPage() {
   )
 }
 
-type RightTab = 'lore' | 'outline' | 'summary' | 'style' | 'stats' | 'search' | 'history'
+type RightTab = 'character' | 'lore' | 'outline' | 'summary' | 'style' | 'stats' | 'search' | 'history'
 
 const RIGHT_TABS: { id: RightTab; name: string }[] = [
+  { id: 'character', name: '人物' },
   { id: 'lore', name: '设定' },
   { id: 'outline', name: '大纲' },
   { id: 'summary', name: '前情' },
@@ -269,6 +271,7 @@ function EditorPage() {
             ))}
           </div>
           <div className="h-[calc(100%-36px)]">
+            {tab === 'character' && <CharacterPanel />}
             {tab === 'lore' && <LorePanel />}
             {tab === 'outline' && <OutlinePanel />}
             {tab === 'summary' && <SummaryPanel />}

@@ -46,6 +46,8 @@ export interface BuildInput {
   length?: SuggestLength
   /** 当前章细纲（让续写朝大纲推进） */
   outline?: string
+  /** 出场人物之间的关系，如「林墨 — 掌柜：旧识，互有戒备」 */
+  relations?: string[]
 }
 
 export interface BuildResult {
@@ -58,13 +60,13 @@ export interface BuildResult {
 const INLINE = {
   synopsis: 300, alwaysOn: 800, global: 600, prevSummaries: 600,
   triggered: 1200, style: 300, suffix: 300, prefix: 1500, prevChapterCount: 2, triggerCount: 6,
-  outline: 300,
+  outline: 300, relations: 400,
 }
 
 const CONTINUE = {
   synopsis: 800, alwaysOn: 2000, global: 1500, prevSummaries: 2000,
   triggered: 3000, style: 500, suffix: 500, prefix: 3000, prevChapterCount: 5, triggerCount: 10,
-  outline: 600,
+  outline: 600, relations: 600,
 }
 
 function typeLabel(type: string): string {
@@ -135,6 +137,13 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
     { key: 'triggered', title: '相关设定', text: triggered.map(loreText).join('\n'), trimOrder: 5, flex: true },
     { key: 'outline', title: '本章大纲', text: input.outline?.trim() ?? '', trimOrder: 6, flex: true },
     {
+      key: 'relations',
+      title: '人物关系',
+      text: (input.relations ?? []).join('\n'),
+      trimOrder: 7,
+      flex: true,
+    },
+    {
       key: 'style',
       title: '风格要求',
       // 手写指令在前，自动总结的文风画像在后（两者都会影响生成）
@@ -161,7 +170,8 @@ export function buildSuggestMessages(input: BuildInput): BuildResult {
   ]
 
   const budget =
-    B.synopsis + B.alwaysOn + B.global + B.prevSummaries + B.triggered + B.outline + B.style + B.suffix + B.prefix
+    B.synopsis + B.alwaysOn + B.global + B.prevSummaries + B.triggered + B.outline + B.relations +
+    B.style + B.suffix + B.prefix
   const fitted = fitBlocks(blocks, budget)
   const user = renderBlocks(fitted)
 

@@ -7,7 +7,8 @@ import {
 } from '../llm/prompts.js'
 import { matchLore } from '../context/lore-match.js'
 import {
-  getChapter, getProject, listChaptersFull, listLore, updateChapter, updateLore, updateProject,
+  addStateHistory, getChapter, getProject, listChaptersFull, listLore,
+  updateChapter, updateLore, updateProject,
 } from '../db/repo.js'
 
 export interface JobUpdate {
@@ -153,6 +154,8 @@ async function runJob(chapterId: string): Promise<void> {
             const target = present.find((c) => c.name === u.name)
             if (!target) continue
             updateLore(target.id, { current_state: u.current_state })
+            // 记录状态变化，供人物时间线回看
+            addStateHistory(target.id, ch.id, ch.title, u.current_state)
             updates.push({ name: u.name, current_state: u.current_state })
           }
           job.updates = updates
