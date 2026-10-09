@@ -128,6 +128,22 @@ npm run app          # 构建并打开桌面窗口
 - 注意：桌面版用**系统 Node** 运行后端（better-sqlite3 是原生模块，与 Electron 内置 Node
   的 ABI 不匹配），因此运行桌面版需要本机装有 Node 18+
 
+## 跨平台
+
+macOS / Windows / Linux 都能跑（后端是 Node + Hono，前端是 Vite + React，数据库是 SQLite）：
+
+```bash
+npm install
+cp .env.example .env    # Windows 用：copy .env.example .env
+npm run dev
+```
+
+- 需要 **Node 18+**（推荐 20/22）。Windows 上 `npm install` 若没有对应的
+  better-sqlite3 预编译包，会尝试本地编译，需要装好 Visual Studio 生成工具
+- 所有 npm 脚本都是跨平台的，没有用到 shell 专有命令
+- 桌面版在 Windows 上用 `taskkill` 结束后端进程，并会从 `C:\Program Files\nodejs\node.exe`
+  等位置找 node
+
 ## 云端存储（可自由选择服务商）
 
 本地数据会打包成一个快照文件（`writerai-sync.json`，含全部项目、章节、设定、摘要），推送到你选的云端；也能随时拉回来。

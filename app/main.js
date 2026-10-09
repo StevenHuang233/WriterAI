@@ -18,18 +18,19 @@ const SERVER_ENTRY = path.join(ROOT, 'server', 'dist', 'index.js')
  * 后端用系统 Node 拉起（better-sqlite3 是原生模块，与 Electron 内置 Node 的 ABI 不匹配）。
  */
 function findNode() {
+  const win = process.platform === 'win32'
   const candidates = [
     process.env.WRITERAI_NODE,
-    '/usr/local/bin/node',
-    '/opt/homebrew/bin/node',
-    '/opt/local/bin/node',
-    'node',
+    ...(win
+      ? ['C:\\Program Files\\nodejs\\node.exe', 'C:\\Program Files (x86)\\nodejs\\node.exe']
+      : ['/usr/local/bin/node', '/opt/homebrew/bin/node', '/opt/local/bin/node']),
+    win ? 'node.exe' : 'node',
   ].filter(Boolean)
   for (const c of candidates) {
-    if (c !== 'node' && fs.existsSync(c)) return c
-    if (c === 'node') return c
+    if (fs.existsSync(c)) return c
   }
-  return 'node'
+  // 最后交给 PATH 解析（Windows 会按 PATHEXT 补 .exe）
+  return win ? 'node.exe' : 'node'
 }
 
 function serverAlive() {
@@ -88,7 +89,12 @@ function startServer() {
 function stopServer() {
   if (!serverProc) return
   try {
-    serverProc.kill('SIGTERM')
+    if (process.platform === 'win32') {
+      // Windows 没有 SIGTERM：用 taskkill 连子进程一起结束
+      spawn('taskkill', ['/pid', String(serverProc.pid), '/T', '/F'], { stdio: 'ignore' })
+    } else {
+      serverProc.kill('SIGTERM')
+    }
   } catch {
     /* ignore */
   }
