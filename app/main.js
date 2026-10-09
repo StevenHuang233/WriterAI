@@ -1,134 +1,145 @@
-/**
- * WriterAI 桌面版（Electron）
- *
- * 说明：后端依赖 better-sqlite3（原生模块），直接用 Electron 自带的 Node 运行会 ABI 不匹配，
- * 因此这里用系统已安装的 Node 启动后端，Electron 只负责窗口与本地 UI。
- */
-const { app, BrowserWindow, dialog, shell } = require('electron')
+const { app, BrowserWindow, shell, dialog } = require('electron')
 const { spawn } = require('node:child_process')
 const path = require('node:path')
-const fs = require('node:fs')
 const http = require('node:http')
+const fs = require('node:fs')
 
-const ROOT = path.resolve(__dirname, '..')
-const SERVER_ENTRY = path.join(ROOT, 'server', 'dist', 'index.js')
 const PORT = Number(process.env.WRITERAI_PORT || 8787)
-const URL = `http://127.0.0.1:${PORT}`
-
 let serverProc = null
-let quitting = false
+let win = null
 
-/** 找到可用的系统 node（Electron 从 Finder 启动时 PATH 可能很短） */
+const isPackaged = Boolean(app.isPackaged)
+/** 未打包：仓库根；打包后：resources 目录（server/dist、web/dist 都拷在这里） */
+const ROOT = isPackaged ? process.resourcesPath : path.resolve(__dirname, '..')
+const SERVER_ENTRY = path.join(ROOT, 'server', 'dist', 'index.js')
+
+/**
+ * Finder 启动时 PATH 很短，需要兜底常见 node 路径。
+ * 后端用系统 Node 拉起（better-sqlite3 是原生模块，与 Electron 内置 Node 的 ABI 不匹配）。
+ */
 function findNode() {
   const candidates = [
     process.env.WRITERAI_NODE,
-    'node',
     '/usr/local/bin/node',
     '/opt/homebrew/bin/node',
-    path.join(process.env.HOME || '', '.nvm/versions/node'),
+    '/opt/local/bin/node',
+    'node',
   ].filter(Boolean)
   for (const c of candidates) {
+    if (c !== 'node' && fs.existsSync(c)) return c
     if (c === 'node') return c
-    if (fs.existsSync(c)) return c
   }
   return 'node'
 }
 
-function waitForServer(timeoutMs = 30000) {
-  const started = Date.now()
-  return new Promise((resolve, reject) => {
-    const check = () => {
-      const req = http.get(`${URL}/api/settings`, (res) => {
-        res.resume()
-        if (res.statusCode === 200) resolve(true)
-        else retry()
-      })
-      req.on('error', retry)
-      req.setTimeout(1000, () => req.destroy())
-    }
-    const retry = () => {
-      if (Date.now() - started > timeoutMs) {
-        reject(new Error('后端启动超时'))
-        return
-      }
-      setTimeout(check, 300)
-    }
-    check()
+function serverAlive() {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/api/settings', timeout: 800 }, (res) => {
+      res.resume()
+      resolve(res.statusCode === 200)
+    })
+    req.on('error', () => resolve(false))
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(false)
+    })
   })
 }
 
-async function startServer() {
+async function waitForServer(timeoutMs = 40000) {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (await serverAlive()) return true
+    await new Promise((r) => setTimeout(r, 400))
+  }
+  return false
+}
+
+function startServer() {
   if (!fs.existsSync(SERVER_ENTRY)) {
-    throw new Error('缺少 server/dist/index.js，请先执行 npm run build')
+    dialog.showErrorBox(
+      '缺少后端构建产物',
+      `找不到 ${SERVER_ENTRY}\n请先在项目根目录执行：npm run build`,
+    )
+    return false
   }
   const node = findNode()
-  serverProc = spawn(node, [SERVER_ENTRY], {
+  serverProc = spawn(node, [entry], {
     cwd: ROOT,
     env: { ...process.env, PORT: String(PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-  serverProc.stdout.on('data', (d) => process.stdout.write(`[server] ${d}`))
-  serverProc.stderr.on('data', (d) => process.stderr.write(`[server] ${d}`))
-  serverProc.on('exit', (code) => {
-    if (!quitting && code !== 0) {
-      dialog.showErrorBox('后端已退出', `后端进程退出（代码 ${code}），应用即将关闭。`)
-      app.quit()
-    }
+  const log = (tag) => (buf) => {
+    const line = String(buf).trim()
+    if (line) console.log(`[server:${tag}] ${line}`)
+  }
+  serverProc.stdout.on('data', log('out'))
+  serverProc.stderr.on('data', log('err'))
+  serverProc.on('error', (e) => {
+    dialog.showErrorBox('后端启动失败', `无法启动 Node：${e.message}\n需要本机安装 Node 18+（桌面版用它运行本地服务）。`)
   })
-  await waitForServer()
+  serverProc.on('exit', (code) => {
+    console.log(`[server] 退出，code=${code}`)
+    serverProc = null
+  })
+  return true
 }
 
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1440,
-    height: 960,
+function stopServer() {
+  if (!serverProc) return
+  try {
+    serverProc.kill('SIGTERM')
+  } catch {
+    /* ignore */
+  }
+  serverProc = null
+}
+
+async function createWindow() {
+  win = new BrowserWindow({
+    width: 1360,
+    height: 900,
     minWidth: 900,
     minHeight: 600,
     title: 'WriterAI 小说提词器',
-    backgroundColor: '#f7f5f0',
+    backgroundColor: '#1c1b19',
     webPreferences: {
       nodeIntegration: false,
-      contextIsolated: true,
-      // 页面只访问本地后端
-      sandbox: false,
+      contextIsolation: true,
     },
   })
-  win.setMenuBarVisibility(false)
-  win.loadURL(URL)
-  // 外部链接用系统浏览器打开
+
+  // 外链用系统浏览器打开
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://127.0.0.1')) return { action: 'allow' }
-    shell.openExternal(url)
-    return { action: 'deny' }
+    if (/^https?:/.test(url)) {
+      void shell.openExternal(url)
+      return { action: 'deny' }
+    }
+    return { action: 'allow' }
   })
+
+  await win.loadURL(`http://127.0.0.1:${PORT}`)
   win.on('closed', () => {
-    // 关闭窗口即退出应用
-    quitting = true
-    app.quit()
+    win = null
   })
 }
 
-app.whenReady().then(async () => {
-  try {
-    await startServer()
-    createWindow()
-  } catch (e) {
-    dialog.showErrorBox('启动失败', String(e && e.message ? e.message : e))
-    app.quit()
-  }
-})
-
-app.on('before-quit', () => {
-  quitting = true
-  if (serverProc && !serverProc.killed) {
-    try {
-      process.kill(-serverProc.pid)
-    } catch {
-      serverProc.kill()
-    }
-  }
-})
-
+app.on('before-quit', stopServer)
 app.on('window-all-closed', () => {
+  stopServer()
   app.quit()
+})
+
+app.whenReady().then(async () => {
+  // 后端已在运行（比如手动 npm run dev）就直接复用
+  let ready = await serverAlive()
+  if (!ready) {
+    ready = startServer() && (await waitForServer())
+  }
+  if (!ready) {
+    dialog.showErrorBox('后端启动失败', `无法连接到 http://127.0.0.1:${PORT}\n请检查 .env 配置或查看控制台输出。`)
+    app.quit()
+    return
+  }
+  await createWindow()
 })

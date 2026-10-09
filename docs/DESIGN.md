@@ -532,8 +532,21 @@ git push -u origin main
   `buildHistoryChain` 在处理完固定章节后、自动分组前，按粒度从粗到细处理锁定节点，
   被占用的章节记入 `assigned`，自动分组时跳过（保证同一批章节只出现一次）
 - **接口**：`GET /api/projects/:id/context-tree?chapterId=&budget=`
-- 前端 `ContextTreeView`：递归渲染，默认展开「被用到的节点及其祖先」，
-  每个节点提供 用此层 / 排除 / 固定（仅叶子）
+- 前端 `ContextTreeGraph`：**SVG 冰柱图（icicle/dendrogram）**——叶子均分宽度，
+  父节点横跨其子节点（x 取子节点范围），折线连接父子；可缩放（0.5～2），
+  `<title>` 提供悬停摘要；点击节点在下方详情卡里操作（用此层 / 排除 / 固定）
+  - 为什么不是缩进列表：图形能直观表达"哪几章被合成了一条"，缩进只能表达层级
+
+## 17. 桌面版 Electron（已实现）
+
+- `app/main.js`：只做窗口 + 进程管理，不含业务逻辑
+  - `findNode()`：优先 `/usr/local/bin/node`、`/opt/homebrew/bin/node` 等绝对路径
+    （Finder 启动时 PATH 很短），最后退回 `node`
+  - `serverAlive()` 轮询 `/api/settings`；后端已运行则复用（避免与 `npm run dev` 冲突）
+  - 打包后 `ROOT` 取 `process.resourcesPath`（extraResources 拷入 server/dist、web/dist）
+- 后端必须用系统 Node 拉起：better-sqlite3 原生模块与 Electron 内置 Node ABI 不匹配
+- `app.on('before-quit')` / `window-all-closed` 时 kill 后端
+- 脚本：根 `npm run app`（build + start），`app` 内 `dist|dmg`
 - **链条条目**：合段条目 `chapterId = "seg:start-end"`，带 `segment` 字段（区间、覆盖的章节
   id、source: llm|joined）；界面上纳入/固定按段内全部章节切换
 

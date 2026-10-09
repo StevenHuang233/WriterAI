@@ -2,21 +2,23 @@
   "name": "@writerai/app",
   "version": "0.1.0",
   "private": true,
+  "description": "WriterAI 桌面版外壳（Electron，仅做窗口 + 拉起本地后端）",
   "main": "main.js",
-  "description": "WriterAI 桌面版（Electron 壳 + 本地后端）",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --mac --dir",
-    "dmg": "electron-builder --mac"
+    "dist": "electron-builder --mac --win",
+    "dmg": "electron-builder --mac dmg"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
   },
   "build": {
     "appId": "com.writerai.app",
     "productName": "WriterAI",
     "files": [
-      "main.js"
+      "main.js",
+      "package.json"
     ],
     "extraResources": [
       {
@@ -28,19 +30,19 @@
         "to": "web/dist"
       },
       {
-        "from": "../node_modules",
-        "to": "node_modules",
+        "from": "../data",
+        "to": "data",
         "filter": [
           "**/*"
         ]
       }
     ],
     "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        "dmg",
-        "zip"
-      ]
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
     }
   }
 }

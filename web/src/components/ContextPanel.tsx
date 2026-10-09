@@ -4,7 +4,7 @@ import {
   type ContextBlock, type ContextChainEntry, type ContextSettings, type ContextTree,
 } from '../api/client'
 import { useStore } from '../store/useStore'
-import ContextTreeView from './ContextTreeView'
+import ContextTreeGraph from './ContextTreeGraph'
 
 const TIER_LABELS: Record<string, string> = {
   full: '完整摘要',
@@ -183,7 +183,7 @@ export default function ContextPanel() {
       </div>
 
       {view === 'tree' && tree && settings && (
-        <ContextTreeView tree={tree} settings={settings} busy={busy} onPatch={(patch) => void apply(patch)} />
+        <ContextTreeGraph tree={tree} settings={settings} busy={busy} onPatch={(patch) => void apply(patch)} />
       )}
 
       <div style={{ display: view === 'list' ? undefined : 'none' }}>
