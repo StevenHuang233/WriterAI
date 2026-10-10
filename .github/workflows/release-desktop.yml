@@ -1,0 +1,63 @@
+name: 构建桌面版并发布
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '上传到哪个 Release 标签'
+        required: true
+        default: v0.1.0
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+            target: --win
+          - os: macos-latest
+            name: macOS
+            target: --mac
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+
+      - name: 构建前后端
+        run: npm run build
+
+      - name: 只保留运行时依赖（避免把 electron 等开发依赖打进安装包）
+        run: npm prune --omit=dev
+
+      - name: 打包桌面版
+        working-directory: app
+        run: npx --yes electron-builder@25 ${{ matrix.target }} --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: 上传安装包到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            app/dist/*.exe
+            app/dist/*.dmg
+            app/dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

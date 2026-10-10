@@ -16,6 +16,7 @@
   "build": {
     "appId": "com.writerai.app",
     "productName": "WriterAI",
+    "electronVersion": "33.4.11",
     "files": [
       "main.js",
       "package.json"
@@ -30,11 +31,8 @@
         "to": "web/dist"
       },
       {
-        "from": "../data",
-        "to": "data",
-        "filter": [
-          "**/*"
-        ]
+        "from": "../node_modules",
+        "to": "node_modules"
       }
     ],
     "mac": {

@@ -121,6 +121,8 @@ npm install          # 首次会装 Electron（约 100MB）
 npm run app          # 构建并打开桌面窗口
 ```
 
+**安装包**：推一个 `v*` 标签就会触发 GitHub Actions，在 Windows 和 macOS 上分别构建并自动上传安装包到对应 Release（`.github/workflows/release-desktop.yml`）。也可以在 Actions 页面手动触发。
+
 - `app/main.js` 只做窗口：拉起本地后端（系统 Node 运行 `server/dist/index.js`），
   轮询 `/api/settings` 就绪后加载 `http://127.0.0.1:8787`；退出时关掉后端
 - 后端已运行（比如开着 `npm run dev`）时直接复用，不会重复启动
