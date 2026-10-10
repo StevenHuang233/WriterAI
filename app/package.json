@@ -4,6 +4,10 @@
   "private": true,
   "description": "WriterAI 桌面版外壳（Electron，仅做窗口 + 拉起本地后端）",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StevenHuang233/WriterAI.git"
+  },
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --mac --win",
@@ -17,6 +21,10 @@
     "appId": "com.writerai.app",
     "productName": "WriterAI",
     "electronVersion": "33.4.11",
+    "publish": [],
+    "directories": {
+      "output": "dist"
+    },
     "files": [
       "main.js",
       "package.json"
