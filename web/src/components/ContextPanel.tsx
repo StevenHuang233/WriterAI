@@ -5,6 +5,7 @@ import {
 } from '../api/client'
 import { useStore } from '../store/useStore'
 import ContextTreeGraph from './ContextTreeGraph'
+import ContextMindMap from './ContextMindMap'
 
 const TIER_LABELS: Record<string, string> = {
   full: '完整摘要',
@@ -24,7 +25,7 @@ export default function ContextPanel() {
   const [busy, setBusy] = useState(false)
   const [segBusy, setSegBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
-  const [view, setView] = useState<'list' | 'tree'>('tree')
+  const [view, setView] = useState<'tree' | 'mind' | 'list'>('tree')
   const [tree, setTree] = useState<ContextTree | null>(null)
 
   async function load() {
@@ -34,7 +35,7 @@ export default function ContextPanel() {
     setBlocks(r.blocks)
     setChain(r.chain)
     setTotal(r.totalChars)
-    if (view === 'tree') {
+    if (view !== 'list') {
       const t = await apiContextTree(projectId, activeChapterId ?? undefined)
       setTree(t.tree)
       setSettings(t.settings)
@@ -143,6 +144,9 @@ export default function ContextPanel() {
       </div>
 
       <div className="flex gap-1">
+        <span className={`tab ${view === 'mind' ? 'active' : ''}`} onClick={() => setView('mind')}>
+          思维导图
+        </span>
         <span className={`tab ${view === 'tree' ? 'active' : ''}`} onClick={() => setView('tree')}>
           结构图
         </span>
@@ -190,6 +194,10 @@ export default function ContextPanel() {
         </div>
         {message && <div className="muted mb-2 text-[12px]">{message}</div>}
       </div>
+
+      {view === 'mind' && tree && settings && (
+        <ContextMindMap tree={tree} settings={settings} busy={busy} onPatch={(patch) => void apply(patch)} />
+      )}
 
       {view === 'tree' && tree && settings && (
         <ContextTreeGraph tree={tree} settings={settings} busy={busy} onPatch={(patch) => void apply(patch)} />
