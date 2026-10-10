@@ -49,7 +49,11 @@ export function parseDetectedCharacters(raw: string): DetectedCharacter[] {
   const text = (raw ?? '').trim()
   if (!text) return []
   // 没有标记块时按「姓名｜身份」逐行解析（当前提示词用的就是这种简单格式）
-  if (!text.includes('【人物】')) {
+  const hasBlock =
+    text.includes('【人物】') ||
+    /^【?人物】?[:：]/m.test(text) ||
+    /【(身份|外貌|性格|动机|口头禅|备注)】/.test(text)
+  if (!hasBlock) {
     return parseRelations(text).map((r) => ({
       name: r.name,
       aliases: [],
