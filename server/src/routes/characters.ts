@@ -9,6 +9,9 @@ import {
   updateLore, upsertCharacterProfile, type LoreRow,
 } from '../db/repo.js'
 import { searchChapters } from '../services/search.js'
+import {
+  parseDetectedCharacters, parseFilledCharacter, parseRelations, type DetectedCharacter,
+} from '../services/characters.js'
 import { badRequest, notFound, parseBody } from './util.js'
 
 export const charactersRoute = new Hono()
@@ -145,30 +148,18 @@ charactersRoute.post('/projects/:id/characters/detect', async (c) => {
     temperature: 0.3,
     effort: env.strong.effort || undefined,
   })
-  const parsed = z
-    .object({
-      characters: z
-        .array(
-          z.object({
-            name: z.string().min(1).max(50),
-            aliases: z.array(z.string().max(50)).max(10).optional().default([]),
-            role: z.string().max(300).optional().default(''),
-            appearance: z.string().max(2000).optional().default(''),
-            personality: z.string().max(2000).optional().default(''),
-            motivation: z.string().max(2000).optional().default(''),
-            catchphrase: z.string().max(500).optional().default(''),
-            note: z.string().max(2000).optional().default(''),
-          }),
-        )
-        .max(50),
-    })
-    .safeParse(extractJson(raw) ?? {})
-
-  if (!parsed.success || parsed.data.characters.length === 0) badRequest('没有从正文里识别出人物')
+  // 模型对这类"抽取"任务会间歇性返回空（同样输入有时成功），因此分块多跑几段再合并
+  const characters = mergeCharacters([
+    ...parseDetectedCharacters(raw),
+    ...(await detectFromChunks(sample)),
+  ])
+  if (characters.length === 0) {
+    badRequest('没有从正文里识别出人物，可以稍后再试一次')
+  }
 
   const existing = listLore(id).filter((l) => l.type === 'character')
   const created: string[] = []
-  for (const ch of parsed.data.characters) {
+  for (const ch of characters) {
     if (existing.some((l) => l.name === ch.name)) continue
     const row = createLore(id, {
       type: 'character',
@@ -191,6 +182,58 @@ charactersRoute.post('/projects/:id/characters/detect', async (c) => {
   }
   return c.json({ ok: true, created, sampleChars: sample.length }, 201)
 })
+
+/** 把正文切成若干段分别识别：既提高召回，也规避模型偶发返回空 */
+async function detectFromChunks(sample: string): Promise<DetectedCharacter[]> {
+  const CHUNK = 2500
+  const MAX_CHUNKS = 6
+  const chunks: string[] = []
+  for (let i = 0; i < sample.length && chunks.length < MAX_CHUNKS; i += CHUNK) {
+    chunks.push(sample.slice(i, i + CHUNK))
+  }
+  // 并发跑（模型偶发返回空，靠多段互补；单段失败不影响其他段）
+  const results = await Promise.allSettled(
+    chunks
+      .filter((chunk) => chunk.trim().length >= 200)
+      .map((chunk) =>
+        chatOnceRobust('strong', detectCharactersPrompt(chunk), {
+          maxTokens: 1500,
+          temperature: 0.3,
+          effort: env.strong.effort || undefined,
+        }),
+      ),
+  )
+  const out: DetectedCharacter[] = []
+  for (const r of results) {
+    if (r.status === 'fulfilled') out.push(...parseDetectedCharacters(r.value))
+  }
+  return out
+}
+
+function mergeCharacters(list: DetectedCharacter[]): DetectedCharacter[] {
+  const map = new Map<string, DetectedCharacter>()
+  for (const c of list) {
+    const name = c.name.trim()
+    if (!name || name.length > 50) continue
+    const prev = map.get(name)
+    if (!prev) {
+      map.set(name, { ...c, name })
+      continue
+    }
+    // 同名保留信息更全的那条
+    map.set(name, {
+      name,
+      aliases: prev.aliases.length >= c.aliases.length ? prev.aliases : c.aliases,
+      role: prev.role || c.role,
+      appearance: prev.appearance || c.appearance,
+      personality: prev.personality || c.personality,
+      motivation: prev.motivation || c.motivation,
+      catchphrase: prev.catchphrase || c.catchphrase,
+      note: prev.note || c.note,
+    })
+  }
+  return [...map.values()]
+}
 
 /** 根据正文补全某个人物的设定 */
 charactersRoute.post('/characters/:loreId/fill', async (c) => {
@@ -218,7 +261,8 @@ charactersRoute.post('/characters/:loreId/fill', async (c) => {
     temperature: 0.3,
     effort: env.strong.effort || undefined,
   })
-  const parsed = z
+  const filled = parseFilledCharacter(raw)
+  const json = z
     .object({
       gender: z.string().max(50).optional().default(''),
       age: z.string().max(50).optional().default(''),
@@ -230,9 +274,9 @@ charactersRoute.post('/characters/:loreId/fill', async (c) => {
       content: z.string().max(5000).optional().default(''),
     })
     .safeParse(extractJson(raw) ?? {})
-  if (!parsed.success) badRequest('模型没有返回可解析的人物设定')
+  const d = json.success && !filled.content && !filled.role ? json.data : filled
+  if (!d.role && !d.content && !d.appearance) badRequest('模型没有返回可解析的人物设定')
 
-  const d = parsed.data
   upsertCharacterProfile(loreId, lore.project_id, {
     gender: d.gender,
     age: d.age,
@@ -274,14 +318,18 @@ charactersRoute.post('/characters/:loreId/infer-relations', async (c) => {
     inferRelationsPrompt(lore.name, others.map((o) => o.name), sample),
     { maxTokens: 1500, temperature: 0.3, effort: env.strong.effort || undefined },
   )
-  const parsed = z
-    .object({ relations: z.array(z.object({ name: z.string().max(50), label: z.string().max(300) })).max(50) })
-    .safeParse(extractJson(raw) ?? {})
-  if (!parsed.success) badRequest('模型没有返回可解析的关系')
+  let relations = parseRelations(raw)
+  if (relations.length === 0) {
+    const json = z
+      .object({ relations: z.array(z.object({ name: z.string().max(50), label: z.string().max(300) })).max(50) })
+      .safeParse(extractJson(raw) ?? {})
+    if (json.success) relations = json.data.relations
+  }
+  if (relations.length === 0) badRequest('模型没有返回可解析的关系')
 
   const existing = listRelationsFor(lore.project_id, [loreId])
   const added: string[] = []
-  for (const r of parsed.data.relations) {
+  for (const r of relations) {
     const target = others.find((o) => o.name === r.name)
     if (!target || !r.label.trim()) continue
     const dup = existing.some(

@@ -44,16 +44,17 @@ ${sample}`,
 
 /**
  * 从正文里识别反复出现的人物，供自动建人物卡。
- * 只输出 JSON：{"characters":[{"name":"","aliases":[],"role":"","appearance":"","personality":"","motivation":"","catchphrase":"","note":""}]}
+ * 用标记行输出而不是 JSON——实测该模型被要求输出 JSON 时会把 token 消耗在思考上导致返回空。
+ * 格式：【人物】姓名 ｜【别名】… ｜【身份】… 等，多个人物之间空一行。
  */
 export function detectCharactersPrompt(sample: string): ChatMessage[] {
   return [
     {
       role: 'user',
       content: `下面是小说正文片段。请找出其中反复出现或重要的人物（不要列只提一次的龙套，也不要列非人物）。
-只输出 JSON，格式：
-{"characters":[{"name":"姓名","aliases":["别名"],"role":"身份","appearance":"外貌（简）","personality":"性格","motivation":"动机目标","catchphrase":"口头禅或说话特点","note":"与剧情相关的补充"}]}
-不要输出 JSON 以外的任何内容。
+
+每行写一个，格式为：姓名｜一句话身份（如：林墨｜追查旧案的剑客）
+不要输出任何解释、标题或序号，也不要输出除名单以外的内容。
 
 ${sample}`,
     },
@@ -66,9 +67,17 @@ export function fillCharacterPrompt(name: string, sample: string): ChatMessage[]
     {
       role: 'user',
       content: `下面是小说中涉及“${name}”的正文片段。请据此补全这个人物的设定卡。
-只输出 JSON，格式：
-{"gender":"","age":"","role":"身份","appearance":"外貌","personality":"性格","motivation":"动机目标","catchphrase":"口头禅或说话特点","content":"设定正文（150～300 字，总结该人物的基本情况与剧情作用）"}
-信息不足的字段留空，不要编造。不要输出 JSON 以外的任何内容。
+按下面的格式输出，不要输出任何解释或标题：
+【性别】
+【年龄】
+【身份】
+【外貌】
+【性格】
+【动机】
+【口头禅】
+【设定】150～300 字，总结该人物的基本情况与剧情作用
+
+信息不足的字段留空，不要编造。
 
 ${sample}`,
     },
@@ -82,8 +91,9 @@ export function inferRelationsPrompt(name: string, others: string[], sample: str
       role: 'user',
       content: `下面是小说正文片段，已有这些已知人物：${others.join('、')}。
 请判断“${name}”与其中哪些人存在明确关系，并简要说明。
-只输出 JSON，格式：{"relations":[{"name":"对方姓名（必须在已知人物中）","label":"关系，如：师徒、旧识、互有戒备"}]}
-只写正文能看出来的关系，不要猜测。不要输出 JSON 以外的任何内容。
+
+每行一条，格式为：对方姓名｜关系（如：师徒、旧识、互有戒备）
+只写正文能看出来的关系，不要猜测；对方姓名必须在已知人物中。不要输出任何解释或标题。
 
 ${sample}`,
     },

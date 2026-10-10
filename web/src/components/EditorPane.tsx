@@ -20,8 +20,11 @@ export default function EditorPane() {
   const fastConfigured = useStore((s) => s.settingsInfo?.fast.configured ?? false)
   const strongConfigured = useStore((s) => s.settingsInfo?.strong.configured ?? false)
   const prefs = useStore((s) => s.prefs)
+  const setPrefs = useStore((s) => s.setPrefs)
   const triggerState = useStore((s) => s.triggerState)
   const requesting = triggerState === 'requesting'
+  /** 关掉后不再请求模型：自动提词与手动提词都停 */
+  const suggestOff = prefs.paused
 
   const editorRef = useRef<ReturnType<typeof useEditor> | null>(null)
   const triggerRef = useRef<IdleTrigger | null>(null)
@@ -220,9 +223,16 @@ export default function EditorPane() {
               sendFeedback('dismissed')
             }
           },
-          onManualTrigger: () => runRef.current('inline', true),
-          onAltSuggestion: () => runAltRef.current(),
-          onManualContinue: () => runRef.current('continue', true),
+          // 快捷键同样受总开关控制（关闭时完全不请求模型）
+          onManualTrigger: () => {
+            if (!useStore.getState().prefs.paused) runRef.current('inline', true)
+          },
+          onAltSuggestion: () => {
+            if (!useStore.getState().prefs.paused) runAltRef.current()
+          },
+          onManualContinue: () => {
+            if (!useStore.getState().prefs.paused) runRef.current('continue', true)
+          },
         }),
       ],
       content: textToDoc(chapter?.content ?? ''),
@@ -435,9 +445,21 @@ export default function EditorPane() {
           重做
         </button>
         <button
+          className={`btn ${suggestOff ? '' : 'btn-primary'}`}
+          title={
+            suggestOff
+              ? '已关闭：不会再调用模型。点击开启提词'
+              : '已开启：停顿后自动提词。点击关闭（关闭后手动提词也不可用）'
+          }
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setPrefs({ paused: !prefs.paused })}
+        >
+          {suggestOff ? 'AI 提词：关' : 'AI 提词：开'}
+        </button>
+        <button
           className="btn"
           title="Cmd/Ctrl + J"
-          disabled={requesting || !fastConfigured}
+          disabled={requesting || suggestOff || !fastConfigured}
           // 不让按钮抢走编辑器焦点，否则 Tab / Cmd+→ 无法接受提示
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => runRef.current('inline', true)}
@@ -447,7 +469,7 @@ export default function EditorPane() {
         <button
           className="btn"
           title="换个不同的提示（Alt+]）"
-          disabled={requesting || !fastConfigured}
+          disabled={requesting || suggestOff || !fastConfigured}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => runRef.current('inline', true)}
         >
@@ -456,14 +478,14 @@ export default function EditorPane() {
         <button
           className="btn"
           title="Cmd/Ctrl + Shift + J（用强模型续写较长一段）"
-          disabled={requesting || !strongConfigured}
+          disabled={requesting || suggestOff || !strongConfigured}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => runRef.current('continue', true)}
         >
           续写一段
         </button>
         <span className="muted text-[12px]">
-          {prefs.paused ? '自动提词已暂停' : `停顿 ${(prefs.idleMs / 1000).toFixed(1)} 秒自动提词`}
+          {prefs.paused ? '已关闭，不会调用模型' : `停顿 ${(prefs.idleMs / 1000).toFixed(1)} 秒自动提词`}
         </span>
         <span className="flex-1" />
         <span className="muted text-[12px]">
